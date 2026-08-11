@@ -10,7 +10,8 @@ Author : Krishna Sai
 Project : eSim Companion
 ------------------------------------------------------------
 """
-
+from gui.components.health_card import HealthCard
+from gui.components.activity_panel import ActivityPanel
 import customtkinter as ctk
 
 from utils.theme import Theme
@@ -30,19 +31,16 @@ class DashboardLayout(ctk.CTkFrame):
 
     def create_layout(self):
 
-        self.health_frame = ctk.CTkFrame(
+        self.health_card = HealthCard(
             self,
-            height=120,
-            fg_color=Theme.Colors.CARD,
-            corner_radius=Theme.Radius.LARGE
+            installed=2,
+            total=4
         )
-
-        self.health_frame.pack(
+        self.health_card.pack(
             fill="x",
             padx=20,
-            pady=(20,10)
+            pady=(20, 10)
         )
-
         self.cards_frame = ctk.CTkFrame(
             self,
             fg_color="transparent"
@@ -55,15 +53,20 @@ class DashboardLayout(ctk.CTkFrame):
             pady=10
         )
 
-        self.activity_frame = ctk.CTkFrame(
+        activities = [
+            "Application started",
+            "Python environment detected",
+            "Git environment detected",
+            "Dependency scan pending"
+        ]
+
+        self.activity_panel = ActivityPanel(
             self,
-            height=150,
-            fg_color=Theme.Colors.CARD,
-            corner_radius=Theme.Radius.LARGE
+            activities=activities
         )
 
-        self.activity_frame.pack(
+        self.activity_panel.pack(
             fill="x",
             padx=20,
-            pady=(10,20)
+            pady=(10, 20)
         )
