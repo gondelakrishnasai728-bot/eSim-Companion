@@ -12,6 +12,8 @@ Project : eSim Companion
 """
 
 import customtkinter as ctk
+from services.dependency_checker import DependencyChecker
+from gui.components.tool_mapper import result_to_card_data
 
 from utils.theme import Theme
 from gui.layouts.sidebar import Sidebar
@@ -22,6 +24,17 @@ from gui.components.status_card import StatusCard
 
 class MainWindow(ctk.CTk):
     """Main application window."""
+    def run_dependency_scan(self):
+        """Run the dependency checker and store the results."""
+
+        checker = DependencyChecker()
+
+        results = checker.check_all()
+
+        self.tool_results = [
+            result_to_card_data(result)
+            for result in results
+        ]
 
     def __init__(self):
         super().__init__()
@@ -47,14 +60,22 @@ class MainWindow(ctk.CTk):
     def create_layout(self):
         """Create the main application layout."""
 
+        # Run dependency scan first
+        self.run_dependency_scan()
+
+        # -------------------------------------------------
         # Sidebar
+        # -------------------------------------------------
         self.sidebar = Sidebar(self)
+
         self.sidebar.pack(
             side="left",
             fill="y"
         )
 
+        # -------------------------------------------------
         # Main content area
+        # -------------------------------------------------
         self.content = ctk.CTkFrame(
             self,
             fg_color=Theme.Colors.BACKGROUND,
@@ -67,46 +88,75 @@ class MainWindow(ctk.CTk):
             expand=True
         )
 
+        # -------------------------------------------------
         # Top bar
+        # -------------------------------------------------
         self.topbar = TopBar(self.content)
+
         self.topbar.pack(
             fill="x"
         )
 
+        # -------------------------------------------------
         # Dashboard
-        self.dashboard = DashboardLayout(self.content)
+        # -------------------------------------------------
+        self.dashboard = DashboardLayout(
+            self.content
+        )
+
         self.dashboard.pack(
             fill="both",
             expand=True
         )
 
+        # -------------------------------------------------
+        # Calculate environment health
+        # -------------------------------------------------
+        installed_count = sum(
+            1
+            for tool in self.tool_results
+            if tool["installed"]
+        )
+
+        total_count = len(self.tool_results)
+
+        self.dashboard.update_health(
+            installed_count,
+            total_count
+        )
+
+        # -------------------------------------------------
+        # Create activity messages
+        # -------------------------------------------------
+        activities = [
+            "Environment scan completed"
+        ]
+
+        for tool in self.tool_results:
+
+            if tool["installed"]:
+                activities.append(
+                    f"{tool['name']} detected"
+                )
+            else:
+                activities.append(
+                    f"{tool['name']} not found"
+                )
+
+        self.dashboard.update_activity(
+            activities
+        )
+
+        # -------------------------------------------------
+        # Add tool cards
+        # -------------------------------------------------
         self.add_status_cards()
+        
 
     def add_status_cards(self):
         """Add initial tool status cards."""
 
-        tools = [
-            {
-                "name": "🐍 Python",
-                "version": "3.12.10",
-                "status": "Installed"
-            },
-            {
-                "name": "🌿 Git",
-                "version": "Detected",
-                "status": "Installed"
-            },
-            {
-                "name": "⚡ Ngspice",
-                "version": "Not Checked",
-                "status": "Missing"
-            },
-            {
-                "name": "🛠 KiCad",
-                "version": "Not Checked",
-                "status": "Missing"
-            }
-        ]
+        tools = self.tool_results
 
         for index, tool in enumerate(tools):
 

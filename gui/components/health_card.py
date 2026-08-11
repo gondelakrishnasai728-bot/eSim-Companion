@@ -60,44 +60,46 @@ class HealthCard(BaseCard):
             pady=(15, 5)
         )
 
-        # Health information
-        info = ctk.CTkLabel(
+        # Information
+        self.info_label = ctk.CTkLabel(
             self,
             text=f"{self.installed} of {self.total} tools available",
             font=Theme.Fonts.BODY,
             text_color=Theme.Colors.SUBTEXT
         )
 
-        info.pack(
+        self.info_label.pack(
             anchor="w",
             padx=Theme.Spacing.MEDIUM
         )
 
         # Progress bar
-        progress = ctk.CTkProgressBar(
+        self.progress = ctk.CTkProgressBar(
             self,
             height=12,
             corner_radius=6,
             progress_color=status_color
         )
 
-        progress.pack(
+        self.progress.pack(
             fill="x",
             padx=Theme.Spacing.MEDIUM,
             pady=10
         )
 
-        progress.set(percentage / 100)
+        self.progress.set(
+            percentage / 100
+        )
 
         # Status
-        status_label = ctk.CTkLabel(
+        self.status_label = ctk.CTkLabel(
             self,
             text=f"{percentage}%  •  {status}",
             font=Theme.Fonts.BODY,
             text_color=status_color
         )
 
-        status_label.pack(
+        self.status_label.pack(
             anchor="w",
             padx=Theme.Spacing.MEDIUM
         )
@@ -110,4 +112,40 @@ class HealthCard(BaseCard):
 
         return round(
             (self.installed / self.total) * 100
+        )
+    def update_health(self, installed, total):
+        """Update the displayed health information."""
+
+        self.installed = installed
+        self.total = total
+
+        percentage = self.calculate_percentage()
+
+        if percentage >= 80:
+            status = "Excellent"
+            status_color = Theme.Colors.SUCCESS
+
+        elif percentage >= 50:
+            status = "Needs Attention"
+            status_color = Theme.Colors.WARNING
+
+        else:
+            status = "Critical"
+            status_color = Theme.Colors.ERROR
+
+        self.info_label.configure(
+            text=f"{installed} of {total} tools available"
+        )
+
+        self.progress.set(
+            percentage / 100
+        )
+
+        self.status_label.configure(
+            text=f"{percentage}%  •  {status}",
+            text_color=status_color
+        )
+
+        self.progress.configure(
+            progress_color=status_color
         )

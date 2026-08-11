@@ -74,3 +74,13 @@ class ActivityPanel(BaseCard):
                 padx=Theme.Spacing.MEDIUM,
                 pady=3
             )
+            
+    def update_activities(self, activities):
+        """Update the displayed activity list."""
+
+        self.activities = activities
+
+        for widget in self.winfo_children():
+            widget.destroy()
+
+        self.create_widgets()

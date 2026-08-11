@@ -63,7 +63,10 @@ class StatusCard(BaseCard):
         if self.status.lower() == "missing":
             status_color = Theme.Colors.ERROR
 
-        elif self.status.lower() == "update available":
+        elif self.status.lower() in [
+            "update available",
+            "incompatible"
+            ]:
             status_color = Theme.Colors.WARNING
 
         status_label = ctk.CTkLabel(
