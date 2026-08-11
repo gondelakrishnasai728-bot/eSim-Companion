@@ -12,29 +12,22 @@ Project : eSim Companion
 """
 
 import customtkinter as ctk
+
 from services.dependency_checker import DependencyChecker
 from gui.components.tool_mapper import result_to_card_data
 
 from utils.theme import Theme
+
 from gui.layouts.sidebar import Sidebar
 from gui.layouts.topbar import TopBar
 from gui.layouts.dashboard_layout import DashboardLayout
+from gui.layouts.scanner_layout import ScannerLayout
+
 from gui.components.status_card import StatusCard
 
 
 class MainWindow(ctk.CTk):
     """Main application window."""
-    def run_dependency_scan(self):
-        """Run the dependency checker and store the results."""
-
-        checker = DependencyChecker()
-
-        results = checker.check_all()
-
-        self.tool_results = [
-            result_to_card_data(result)
-            for result in results
-        ]
 
     def __init__(self):
         super().__init__()
@@ -55,27 +48,44 @@ class MainWindow(ctk.CTk):
             fg_color=Theme.Colors.BACKGROUND
         )
 
+        self.activity_history = []
+        self.run_dependency_scan()
+
         self.create_layout()
+
+    # -------------------------------------------------
+    # Dependency Scan
+    # -------------------------------------------------
+
+    def run_dependency_scan(self):
+        """Run the dependency checker and store the results."""
+
+        checker = DependencyChecker()
+
+        results = checker.check_all()
+
+        self.tool_results = [
+            result_to_card_data(result)
+            for result in results
+        ]
+
+    # -------------------------------------------------
+    # Main Layout
+    # -------------------------------------------------
 
     def create_layout(self):
         """Create the main application layout."""
 
-        # Run dependency scan first
-        self.run_dependency_scan()
-
-        # -------------------------------------------------
-        # Sidebar
-        # -------------------------------------------------
-        self.sidebar = Sidebar(self)
+        self.sidebar = Sidebar(
+            self,
+            on_navigate=self.handle_navigation
+        )
 
         self.sidebar.pack(
             side="left",
             fill="y"
         )
 
-        # -------------------------------------------------
-        # Main content area
-        # -------------------------------------------------
         self.content = ctk.CTkFrame(
             self,
             fg_color=Theme.Colors.BACKGROUND,
@@ -88,18 +98,55 @@ class MainWindow(ctk.CTk):
             expand=True
         )
 
-        # -------------------------------------------------
-        # Top bar
-        # -------------------------------------------------
-        self.topbar = TopBar(self.content)
+        self.topbar = TopBar(
+            self.content
+        )
 
         self.topbar.pack(
             fill="x"
         )
 
-        # -------------------------------------------------
-        # Dashboard
-        # -------------------------------------------------
+        self.show_dashboard()
+
+    # -------------------------------------------------
+    # Navigation
+    # -------------------------------------------------
+
+    def handle_navigation(self, page):
+        """Handle sidebar navigation."""
+
+        if page == "dashboard":
+            self.show_dashboard()
+
+        elif page == "scanner":
+            self.show_scanner()
+
+        else:
+            print(
+                f"Page '{page}' is not implemented yet."
+            )
+
+    # -------------------------------------------------
+    # Clear Content
+    # -------------------------------------------------
+
+    def clear_content(self):
+        """Remove the current page while keeping the top bar."""
+
+        for widget in self.content.winfo_children():
+
+            if widget != self.topbar:
+                widget.destroy()
+
+    # -------------------------------------------------
+    # Dashboard
+    # -------------------------------------------------
+
+    def show_dashboard(self):
+        """Display the dashboard page."""
+
+        self.clear_content()
+
         self.dashboard = DashboardLayout(
             self.content
         )
@@ -109,28 +156,29 @@ class MainWindow(ctk.CTk):
             expand=True
         )
 
-        # -------------------------------------------------
-        # Calculate environment health
-        # -------------------------------------------------
         installed_count = sum(
             1
             for tool in self.tool_results
             if tool["installed"]
         )
 
-        total_count = len(self.tool_results)
+        total_count = len(
+            self.tool_results
+        )
 
         self.dashboard.update_health(
             installed_count,
             total_count
         )
 
-        # -------------------------------------------------
-        # Create activity messages
-        # -------------------------------------------------
-        activities = [
-            "Environment scan completed"
-        ]
+        activities = list(
+            self.activity_history
+        )
+
+        if not activities:
+            activities.append(
+                "Environment scan completed"
+            )
 
         for tool in self.tool_results:
 
@@ -147,18 +195,16 @@ class MainWindow(ctk.CTk):
             activities
         )
 
-        # -------------------------------------------------
-        # Add tool cards
-        # -------------------------------------------------
         self.add_status_cards()
-        
+
+    # -------------------------------------------------
+    # Status Cards
+    # -------------------------------------------------
 
     def add_status_cards(self):
-        """Add initial tool status cards."""
+        """Add tool status cards to the dashboard."""
 
-        tools = self.tool_results
-
-        for index, tool in enumerate(tools):
+        for index, tool in enumerate(self.tool_results):
 
             card = StatusCard(
                 self.dashboard.cards_frame,
@@ -198,11 +244,49 @@ class MainWindow(ctk.CTk):
             weight=1
         )
 
+    # -------------------------------------------------
+    # Scanner
+    # -------------------------------------------------
+
+    def show_scanner(self):
+        """Display the environment scanner page."""
+
+        self.clear_content()
+
+        self.scanner = ScannerLayout(
+            self.content,
+            on_scan_complete=self.handle_scan_complete
+        )
+
+        self.scanner.pack(
+            fill="both",
+            expand=True
+        )
+
+    # -------------------------------------------------
+    # Scanner Callback
+    # -------------------------------------------------
+
+    def handle_scan_complete(self, results):
+        """Handle fresh results returned by the Scanner."""
+
+        self.tool_results = [
+            result_to_card_data(result)
+            for result in results
+        ]
+
+        self.activity_history.append(
+            "Environment scan completed"
+        )
+
 
 def create_application():
     """Create and configure the application."""
 
     ctk.set_appearance_mode("Dark")
-    ctk.set_default_color_theme("blue")
+
+    ctk.set_default_color_theme(
+        "blue"
+    )
 
     return MainWindow()
