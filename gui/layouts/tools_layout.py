@@ -19,6 +19,7 @@ from utils.theme import Theme
 from services.dependency_checker import DependencyChecker
 from config.tools import TOOLS
 from gui.components.base_card import BaseCard
+from services.tool_installer import ToolInstaller
 
 
 class ToolsLayout(ctk.CTkFrame):
@@ -263,17 +264,16 @@ class ToolsLayout(ctk.CTkFrame):
             )
 
     def install_tool(self, tool_name):
-        """Open the official download page for a missing tool."""
+        """Open the official download page for a tool."""
 
-        download_pages = {
-            "Ngspice": "https://sourceforge.net/projects/ngspice/files/ng-spice-rework/",
-            "KiCad": "https://www.kicad.org/download/",
-        }
+        success = ToolInstaller.open_download_page(
+            tool_name
+        )
 
-        url = download_pages.get(tool_name)
-
-        if url:
-            webbrowser.open(url)
+        if not success:
+            print(
+                f"No download page available for: {tool_name}"
+            )
     def rescan(self):
         """Start a background dependency scan."""
 
