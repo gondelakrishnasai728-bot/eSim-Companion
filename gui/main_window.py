@@ -22,6 +22,7 @@ from gui.layouts.sidebar import Sidebar
 from gui.layouts.topbar import TopBar
 from gui.layouts.dashboard_layout import DashboardLayout
 from gui.layouts.scanner_layout import ScannerLayout
+from gui.layouts.tools_layout import ToolsLayout
 
 from gui.components.status_card import StatusCard
 
@@ -121,11 +122,13 @@ class MainWindow(ctk.CTk):
         elif page == "scanner":
             self.show_scanner()
 
+        elif page == "tools":
+            self.show_tools()
+
         else:
             print(
                 f"Page '{page}' is not implemented yet."
             )
-
     # -------------------------------------------------
     # Clear Content
     # -------------------------------------------------
@@ -262,13 +265,26 @@ class MainWindow(ctk.CTk):
             fill="both",
             expand=True
         )
+    def show_tools(self):
+        """Display the tool manager page."""
 
+        self.clear_content()
+
+        self.tools = ToolsLayout(
+            self.content,
+            on_scan_complete=self.handle_scan_complete
+        )
+
+        self.tools.pack(
+            fill="both",
+            expand=True
+        )
     # -------------------------------------------------
     # Scanner Callback
     # -------------------------------------------------
 
     def handle_scan_complete(self, results):
-        """Handle fresh results returned by the Scanner."""
+        """Handle fresh results returned by a dependency scan."""
 
         self.tool_results = [
             result_to_card_data(result)
