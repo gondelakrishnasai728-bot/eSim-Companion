@@ -15,6 +15,7 @@ import customtkinter as ctk
 from utils.theme import Theme
 from services.dependency_checker import DependencyChecker
 from gui.components.base_card import BaseCard
+from services.update_checker import UpdateChecker
 
 
 class UpdatesLayout(ctk.CTkFrame):
@@ -130,7 +131,8 @@ class UpdatesLayout(ctk.CTkFrame):
         card.pack(
             fill="x",
             padx=5,
-            pady=8
+            pady=8,
+            ipady=8
         )
 
         # -------------------------------------------------
@@ -169,16 +171,69 @@ class UpdatesLayout(ctk.CTkFrame):
         )
 
         # -------------------------------------------------
-        # Update status
+        # Latest version and update status
         # -------------------------------------------------
 
+        latest_version = None
+
         if not result.installed:
+
             status_text = "Not Installed"
             status_color = Theme.Colors.ERROR
 
         else:
-            status_text = "Up to Date"
-            status_color = Theme.Colors.SUCCESS
+
+            latest_version = UpdateChecker.get_latest_version(
+                result.name
+            )
+
+            status_text = UpdateChecker.compare_versions(
+                result.version,
+                latest_version
+            )
+
+            if status_text == "Update Available":
+
+                status_color = Theme.Colors.WARNING
+
+            elif status_text == "Up to Date":
+
+                status_color = Theme.Colors.SUCCESS
+
+            elif status_text == "Newer Than Latest":
+
+                status_color = Theme.Colors.WARNING
+
+            else:
+
+                status_color = Theme.Colors.SUBTEXT
+
+        # -------------------------------------------------
+        # Latest version
+        # -------------------------------------------------
+
+        latest_text = (
+            latest_version
+            if latest_version
+            else "Unavailable"
+        )
+
+        latest_label = ctk.CTkLabel(
+            card,
+            text=f"Latest Version : {latest_text}",
+            font=Theme.Fonts.BODY,
+            text_color=Theme.Colors.SUBTEXT
+        )
+
+        latest_label.pack(
+            anchor="w",
+            padx=20,
+            pady=(5, 0)
+        )
+
+        # -------------------------------------------------
+        # Update status
+        # -------------------------------------------------
 
         status_label = ctk.CTkLabel(
             card,

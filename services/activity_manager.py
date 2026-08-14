@@ -3,34 +3,94 @@
 File Name : activity_manager.py
 
 Purpose:
-Manages application activity history for eSim Companion.
+Manages persistent application activity history
+for eSim Companion.
 
 Author : Krishna Sai
 Project : eSim Companion
 ------------------------------------------------------------
 """
 
+import json
+from pathlib import Path
+
 
 class ActivityManager:
-    """Stores and manages application activity."""
+    """Stores and manages persistent application activity."""
 
-    _activities = []
+    ACTIVITY_FILE = (
+        Path(__file__).parent.parent
+        / "logs"
+        / "activity.json"
+    )
+
+    @classmethod
+    def _load(cls):
+        """Load activities from the JSON file."""
+
+        if not cls.ACTIVITY_FILE.exists():
+            return []
+
+        try:
+            with open(
+                cls.ACTIVITY_FILE,
+                "r",
+                encoding="utf-8"
+            ) as file:
+                data = json.load(file)
+
+            if isinstance(data, list):
+                return data
+
+        except (
+            OSError,
+            json.JSONDecodeError
+        ):
+            pass
+
+        return []
+
+    @classmethod
+    def _save(cls, activities):
+        """Save activities to the JSON file."""
+
+        cls.ACTIVITY_FILE.parent.mkdir(
+            parents=True,
+            exist_ok=True
+        )
+
+        with open(
+            cls.ACTIVITY_FILE,
+            "w",
+            encoding="utf-8"
+        ) as file:
+            json.dump(
+                activities,
+                file,
+                indent=4
+            )
 
     @classmethod
     def add_activity(cls, message):
-        """Add an activity message."""
+        """Add and persist an activity message."""
 
-        if message:
-            cls._activities.append(message)
+        if not message:
+            return
+
+        activities = cls._load()
+
+        activities.append(message)
+
+        cls._save(activities)
 
     @classmethod
     def get_activities(cls):
-        """Return all recorded activities."""
+        """Return all saved activities."""
 
-        return cls._activities.copy()
+        return cls._load()
 
     @classmethod
     def clear_activity(cls):
-        """Clear all activity history."""
+        """Clear all saved activities."""
 
-        cls._activities.clear()
+        cls._save([])
