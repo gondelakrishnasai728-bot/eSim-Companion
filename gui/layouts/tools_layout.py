@@ -11,9 +11,9 @@ Project : eSim Companion
 ------------------------------------------------------------
 """
 
-import customtkinter as ctk
-import webbrowser
 import threading
+
+import customtkinter as ctk
 
 from utils.theme import Theme
 from services.dependency_checker import DependencyChecker
@@ -25,12 +25,18 @@ from services.tool_installer import ToolInstaller
 class ToolsLayout(ctk.CTkFrame):
     """Tools management page."""
 
-    def __init__(self, parent,on_scan_complete=None):
+    def __init__(
+        self,
+        parent,
+        on_scan_complete=None
+    ):
         super().__init__(
             master=parent,
             fg_color=Theme.Colors.BACKGROUND
         )
+
         self.on_scan_complete = on_scan_complete
+        self.scanning = False
 
         self.create_layout()
 
@@ -62,6 +68,7 @@ class ToolsLayout(ctk.CTkFrame):
         title.pack(
             side="left"
         )
+
         self.rescan_button = ctk.CTkButton(
             header,
             text="Rescan",
@@ -115,6 +122,9 @@ class ToolsLayout(ctk.CTkFrame):
     def load_tools(self):
         """Check and display all configured tools."""
 
+        for widget in self.tools_frame.winfo_children():
+            widget.destroy()
+
         checker = DependencyChecker()
 
         results = checker.check_all()
@@ -131,6 +141,7 @@ class ToolsLayout(ctk.CTkFrame):
         card = BaseCard(
             self.tools_frame
         )
+
         card.configure(
             height=210
         )
@@ -241,12 +252,6 @@ class ToolsLayout(ctk.CTkFrame):
                     self.install_tool(name)
             )
 
-            action_button.pack(
-                anchor="e",
-                padx=20,
-                pady=(5, 15)
-            )
-
         else:
 
             action_button = ctk.CTkButton(
@@ -257,11 +262,11 @@ class ToolsLayout(ctk.CTkFrame):
                 state="disabled"
             )
 
-            action_button.pack(
-                anchor="e",
-                padx=20,
-                pady=(5, 15)
-            )
+        action_button.pack(
+            anchor="e",
+            padx=20,
+            pady=(5, 15)
+        )
 
     def install_tool(self, tool_name):
         """Open the official download page for a tool."""
@@ -271,11 +276,19 @@ class ToolsLayout(ctk.CTkFrame):
         )
 
         if not success:
+
             print(
-                f"No download page available for: {tool_name}"
+                f"No download page available for: "
+                f"{tool_name}"
             )
+
     def rescan(self):
         """Start a background dependency scan."""
+
+        if self.scanning:
+            return
+
+        self.scanning = True
 
         self.rescan_button.configure(
             text="Scanning...",
@@ -289,32 +302,77 @@ class ToolsLayout(ctk.CTkFrame):
 
         thread.start()
 
-
     def _perform_rescan(self):
         """Perform the dependency scan in the background."""
 
-        checker = DependencyChecker()
+        try:
 
-        results = checker.check_all()
+            checker = DependencyChecker()
 
-        self.after(
-            0,
-            lambda: self._display_rescan_results(results)
-        )
+            results = checker.check_all()
 
+            self.after(
+                0,
+                lambda results=results:
+                    self._display_rescan_results(
+                        results
+                    )
+            )
+
+        except Exception as error:
+
+            error_message = str(error)
+
+            self.after(
+                0,
+                lambda message=error_message:
+                    self._display_rescan_error(
+                        message
+                    )
+            )
 
     def _display_rescan_results(self, results):
         """Update the UI with fresh scan results."""
+
+        if not self.winfo_exists():
+            return
 
         for widget in self.tools_frame.winfo_children():
             widget.destroy()
 
         for result in results:
-            self.create_tool_card(result)
+
+            self.create_tool_card(
+                result
+            )
+
         if self.on_scan_complete:
-            self.on_scan_complete(results)
+
+            self.on_scan_complete(
+                results
+            )
+
+        self.scanning = False
 
         self.rescan_button.configure(
             text="Rescan",
             state="normal"
+        )
+
+    def _display_rescan_error(self, error_message):
+        """Display a rescan error."""
+
+        if not self.winfo_exists():
+            return
+
+        self.scanning = False
+
+        self.rescan_button.configure(
+            text="Rescan",
+            state="normal"
+        )
+
+        print(
+            f"Dependency scan failed: "
+            f"{error_message}"
         )

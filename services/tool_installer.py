@@ -12,8 +12,11 @@ class ToolInstaller:
     """Handles installation actions for supported tools."""
 
     DOWNLOAD_PAGES = {
-       "Git": "https://git-scm.com/install/windows",
-        "Ngspice": "https://sourceforge.net/projects/ngspice/files/ng-spice-rework/",
+        "Git": "https://git-scm.com/install/windows",
+        "Ngspice": (
+            "https://sourceforge.net/projects/"
+            "ngspice/files/ng-spice-rework/"
+        ),
         "KiCad": "https://www.kicad.org/download/",
     }
 
@@ -29,4 +32,3 @@ class ToolInstaller:
         webbrowser.open(url)
 
         return True
-

@@ -53,6 +53,7 @@ class MainWindow(ctk.CTk):
         )
 
         self.activity_history = []
+
         self.run_dependency_scan()
 
         self.create_layout()
@@ -82,10 +83,13 @@ class MainWindow(ctk.CTk):
         for tool in self.tool_results:
 
             if tool["installed"]:
+
                 ActivityManager.add_activity(
                     f"{tool['name']} detected"
                 )
+
             else:
+
                 ActivityManager.add_activity(
                     f"{tool['name']} not found"
                 )
@@ -137,27 +141,35 @@ class MainWindow(ctk.CTk):
         """Handle sidebar navigation."""
 
         if page == "dashboard":
+
             self.show_dashboard()
 
         elif page == "scanner":
+
             self.show_scanner()
 
         elif page == "tools":
+
             self.show_tools()
 
         elif page == "configure":
+
             self.show_configure()
 
         elif page == "updates":
+
             self.show_updates()
 
         elif page == "activity":
+
             self.show_activity()
 
         else:
+
             print(
                 f"Page '{page}' is not implemented yet."
             )
+
     def show_configure(self):
         """Display the configuration page."""
 
@@ -171,6 +183,7 @@ class MainWindow(ctk.CTk):
             fill="both",
             expand=True
         )
+
     # -------------------------------------------------
     # Clear Content
     # -------------------------------------------------
@@ -181,6 +194,7 @@ class MainWindow(ctk.CTk):
         for widget in self.content.winfo_children():
 
             if widget != self.topbar:
+
                 widget.destroy()
 
     # -------------------------------------------------
@@ -221,6 +235,7 @@ class MainWindow(ctk.CTk):
         )
 
         if not activities:
+
             activities.append(
                 "Environment scan completed"
             )
@@ -228,10 +243,13 @@ class MainWindow(ctk.CTk):
         for tool in self.tool_results:
 
             if tool["installed"]:
+
                 activities.append(
                     f"{tool['name']} detected"
                 )
+
             else:
+
                 activities.append(
                     f"{tool['name']} not found"
                 )
@@ -249,7 +267,9 @@ class MainWindow(ctk.CTk):
     def add_status_cards(self):
         """Add tool status cards to the dashboard."""
 
-        for index, tool in enumerate(self.tool_results):
+        for index, tool in enumerate(
+            self.tool_results
+        ):
 
             card = StatusCard(
                 self.dashboard.cards_frame,
@@ -307,6 +327,7 @@ class MainWindow(ctk.CTk):
             fill="both",
             expand=True
         )
+
     def show_tools(self):
         """Display the tool manager page."""
 
@@ -321,6 +342,7 @@ class MainWindow(ctk.CTk):
             fill="both",
             expand=True
         )
+
     # -------------------------------------------------
     # Scanner Callback
     # -------------------------------------------------
@@ -336,6 +358,11 @@ class MainWindow(ctk.CTk):
         self.activity_history.append(
             "Environment scan completed"
         )
+
+    # -------------------------------------------------
+    # Updates
+    # -------------------------------------------------
+
     def show_updates(self):
         """Display the updates page."""
 
@@ -349,6 +376,11 @@ class MainWindow(ctk.CTk):
             fill="both",
             expand=True
         )
+
+    # -------------------------------------------------
+    # Activity
+    # -------------------------------------------------
+
     def show_activity(self):
         """Display the activity page."""
 
@@ -367,7 +399,9 @@ class MainWindow(ctk.CTk):
 def create_application():
     """Create and configure the application."""
 
-    ctk.set_appearance_mode("Dark")
+    ctk.set_appearance_mode(
+        "Dark"
+    )
 
     ctk.set_default_color_theme(
         "blue"

@@ -12,6 +12,7 @@ Project : eSim Companion
 
 import tkinter.filedialog as filedialog
 from pathlib import Path
+
 import customtkinter as ctk
 
 from utils.theme import Theme
@@ -118,10 +119,14 @@ class ConfigureLayout(ctk.CTkFrame):
         config = ConfigManager.load_config()
 
         for result in results:
+
             if config.get(result.name):
                 result.path = config[result.name]
 
-            self.create_tool_config_card(result)
+            self.create_tool_config_card(
+                result
+            )
+
     def create_tool_config_card(self, result):
         """Create a configuration card for one tool."""
 
@@ -163,9 +168,11 @@ class ConfigureLayout(ctk.CTkFrame):
         status_color = Theme.Colors.SUCCESS
 
         if result.status == "Missing":
+
             status_color = Theme.Colors.ERROR
 
         elif result.status == "Incompatible":
+
             status_color = Theme.Colors.WARNING
 
         status = ctk.CTkLabel(
@@ -233,7 +240,9 @@ class ConfigureLayout(ctk.CTkFrame):
         if not file_path:
             return
 
-        selected_name = Path(file_path).name.lower()
+        selected_name = Path(
+            file_path
+        ).name.lower()
 
         expected_names = [
             name.lower()
@@ -244,10 +253,12 @@ class ConfigureLayout(ctk.CTkFrame):
         ]
 
         if selected_name not in expected_names:
+
             print(
-                f"Invalid executable selected for {tool_name}: "
-                f"{selected_name}"
+                f"Invalid executable selected for "
+                f"{tool_name}: {selected_name}"
             )
+
             return
 
         ConfigManager.set_path(
