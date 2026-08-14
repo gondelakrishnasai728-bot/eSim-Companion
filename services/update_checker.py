@@ -11,6 +11,7 @@ Project : eSim Companion
 """
 
 import json
+import re
 import urllib.request
 
 from packaging.version import Version, InvalidVersion
@@ -36,6 +37,16 @@ class UpdateChecker:
                 "downloads/release/"
                 "?is_published=true"
                 "&sort=-release_date"
+            ),
+            "version_key": "name"
+        },
+        "KiCad": {
+            "url": (
+                "https://gitlab.com/api/v4/projects/"
+                "kicad%2Fcode%2Fkicad/repository/tags"
+                "?per_page=100"
+                "&order_by=updated"
+                "&sort=desc"
             ),
             "version_key": "name"
         }
@@ -119,6 +130,10 @@ class UpdateChecker:
         # Python has a different API response format.
         if tool_name == "Python":
             return cls.get_python_latest_version()
+        if tool_name == "Ngspice":
+            return cls.get_ngspice_latest_version()
+        if tool_name == "KiCad":
+            return cls.get_kicad_latest_version()
 
         source = cls.SOURCES.get(tool_name)
 
@@ -249,3 +264,61 @@ class UpdateChecker:
             OSError
         ):
             return None
+    @classmethod
+    def get_kicad_latest_version(cls):
+        """Retrieve the latest stable KiCad 10 release."""
+
+        url = (
+            "https://gitlab.com/api/v4/projects/"
+            "kicad%2Fcode%2Fkicad/repository/tags"
+            "?per_page=100"
+            "&order_by=updated"
+            "&sort=desc"
+        )
+
+        data = cls.fetch_json(url)
+
+        if not isinstance(data, list):
+            return None
+
+        versions = []
+
+        for tag in data:
+
+            name = tag.get("name")
+
+            if not name:
+                continue
+
+            # Only accept stable KiCad 10.0.x releases.
+            #
+            # Examples accepted:
+            # 10.0.0
+            # 10.0.4
+            # 10.0.5
+            #
+            # Examples rejected:
+            # 10.0.5-rc1
+            # 10.99.0
+            # development versions
+
+            if not re.fullmatch(
+                r"10\.0\.\d+",
+                name
+            ):
+                continue
+
+            try:
+                version = Version(name)
+
+            except InvalidVersion:
+                continue
+
+            versions.append(version)
+
+        if not versions:
+            return None
+
+        latest = max(versions)
+
+        return str(latest)

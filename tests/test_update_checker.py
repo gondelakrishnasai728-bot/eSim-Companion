@@ -3,14 +3,24 @@ from services.update_checker import UpdateChecker
 
 def main():
 
-    print("===== Ngspice Live Update Test =====")
+    print("===== All Tools Latest Version Test =====")
 
-    latest = UpdateChecker.get_ngspice_latest_version()
+    tools = [
+        "Python",
+        "Git",
+        "Ngspice",
+        "KiCad"
+    ]
 
-    print(
-        "Latest Ngspice version:",
-        latest
-    )
+    for tool in tools:
+
+        latest = UpdateChecker.get_latest_version(
+            tool
+        )
+
+        print(
+            f"{tool} latest version: {latest}"
+        )
 
 
 if __name__ == "__main__":
