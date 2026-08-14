@@ -17,12 +17,15 @@ from services.dependency_checker import DependencyChecker
 from gui.components.tool_mapper import result_to_card_data
 
 from utils.theme import Theme
-
+from gui.layouts.updates_layout import UpdatesLayout
 from gui.layouts.sidebar import Sidebar
 from gui.layouts.topbar import TopBar
 from gui.layouts.dashboard_layout import DashboardLayout
 from gui.layouts.scanner_layout import ScannerLayout
 from gui.layouts.tools_layout import ToolsLayout
+from gui.layouts.configure_layout import ConfigureLayout
+from services.activity_manager import ActivityManager
+from gui.layouts.activity_layout import ActivityLayout
 
 from gui.components.status_card import StatusCard
 
@@ -59,7 +62,7 @@ class MainWindow(ctk.CTk):
     # -------------------------------------------------
 
     def run_dependency_scan(self):
-        """Run the dependency checker and store the results."""
+        """Run the dependency checker and record activity."""
 
         checker = DependencyChecker()
 
@@ -69,6 +72,23 @@ class MainWindow(ctk.CTk):
             result_to_card_data(result)
             for result in results
         ]
+
+        ActivityManager.clear_activity()
+
+        ActivityManager.add_activity(
+            "Environment scan completed"
+        )
+
+        for tool in self.tool_results:
+
+            if tool["installed"]:
+                ActivityManager.add_activity(
+                    f"{tool['name']} detected"
+                )
+            else:
+                ActivityManager.add_activity(
+                    f"{tool['name']} not found"
+                )
 
     # -------------------------------------------------
     # Main Layout
@@ -125,10 +145,32 @@ class MainWindow(ctk.CTk):
         elif page == "tools":
             self.show_tools()
 
+        elif page == "configure":
+            self.show_configure()
+
+        elif page == "updates":
+            self.show_updates()
+
+        elif page == "activity":
+            self.show_activity()
+
         else:
             print(
                 f"Page '{page}' is not implemented yet."
             )
+    def show_configure(self):
+        """Display the configuration page."""
+
+        self.clear_content()
+
+        self.configure_page = ConfigureLayout(
+            self.content
+        )
+
+        self.configure_page.pack(
+            fill="both",
+            expand=True
+        )
     # -------------------------------------------------
     # Clear Content
     # -------------------------------------------------
@@ -293,6 +335,32 @@ class MainWindow(ctk.CTk):
 
         self.activity_history.append(
             "Environment scan completed"
+        )
+    def show_updates(self):
+        """Display the updates page."""
+
+        self.clear_content()
+
+        self.updates_page = UpdatesLayout(
+            self.content
+        )
+
+        self.updates_page.pack(
+            fill="both",
+            expand=True
+        )
+    def show_activity(self):
+        """Display the activity page."""
+
+        self.clear_content()
+
+        self.activity_page = ActivityLayout(
+            self.content
+        )
+
+        self.activity_page.pack(
+            fill="both",
+            expand=True
         )
 
 

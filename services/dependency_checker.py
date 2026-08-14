@@ -11,10 +11,12 @@ Project : eSim Companion
 ------------------------------------------------------------
 """
 
+import os
 import re
 import shutil
 import subprocess
 
+from config.config_manager import ConfigManager
 from dataclasses import dataclass
 from typing import Optional
 
@@ -69,8 +71,12 @@ class DependencyChecker:
     def check_tool(self, name, command, version_args):
         """Check whether a specific tool is installed."""
 
-        path = shutil.which(command)
+        configured_path = ConfigManager.get_path(name)
 
+        if configured_path and os.path.isfile(configured_path):
+            path = configured_path
+        else:
+            path = shutil.which(command)
         minimum_version = self.tools[name]["minimum_version"]
 
         # Tool not found
@@ -88,7 +94,7 @@ class DependencyChecker:
 
         # Tool found, retrieve version
         version = self.get_version(
-            command,
+            path,
             version_args
         )
 
