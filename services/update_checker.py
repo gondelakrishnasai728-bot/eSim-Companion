@@ -12,6 +12,7 @@ Project : eSim Companion
 
 import json
 import re
+import urllib.error
 import urllib.request
 
 from packaging.version import Version, InvalidVersion
@@ -20,7 +21,7 @@ from packaging.version import Version, InvalidVersion
 class UpdateChecker:
     """Checks installed versions against latest versions."""
 
-    TIMEOUT = 5
+    TIMEOUT = 10
 
     SOURCES = {
         "Git": {
@@ -28,49 +29,66 @@ class UpdateChecker:
                 "https://api.github.com/repos/"
                 "git-for-windows/git/releases/latest"
             ),
-            "version_key": "tag_name"
+            "version_key": "tag_name",
         },
-
-        "Python": {
-            "url": (
-                "https://www.python.org/api/v2/"
-                "downloads/release/"
-                "?is_published=true"
-                "&sort=-release_date"
-            ),
-            "version_key": "name"
-        },
-        "KiCad": {
-            "url": (
-                "https://gitlab.com/api/v4/projects/"
-                "kicad%2Fcode%2Fkicad/repository/tags"
-                "?per_page=100"
-                "&order_by=updated"
-                "&sort=desc"
-            ),
-            "version_key": "name"
-        }
     }
 
+    # =================================================
+    # Version comparison
+    # =================================================
+
     @staticmethod
-    def compare_versions(installed, latest):
+    def normalize_version(version):
+        """Normalize a tool version for comparison."""
+
+        if not version:
+            return None
+
+        version = str(version).strip()
+
+        # Remove common prefixes.
+        version = version.lstrip("vV")
+
+        # Git for Windows:
+        # 2.53.0.windows.1 -> 2.53.0
+        if ".windows" in version.lower():
+
+            version = re.split(
+                r"\.windows",
+                version,
+                flags=re.IGNORECASE
+            )[0]
+
+        # Remove common suffixes such as:
+        # -rc1
+        # -beta1
+        version = re.split(
+            r"[-+]",
+            version,
+            maxsplit=1
+        )[0]
+
+        return version.strip()
+
+    @classmethod
+    def compare_versions(cls, installed, latest):
         """Compare two version strings."""
 
         if not installed or not latest:
             return "Unknown"
 
-        try:
-            # Git for Windows versions can look like:
-            # 2.55.0.windows.4
-            #
-            # Compare the main numeric version.
-            installed_normalized = (
-                installed.split(".windows")[0]
-            )
+        installed_normalized = cls.normalize_version(
+            installed
+        )
 
-            latest_normalized = (
-                latest.split(".windows")[0]
-            )
+        latest_normalized = cls.normalize_version(
+            latest
+        )
+
+        if not installed_normalized or not latest_normalized:
+            return "Unknown"
+
+        try:
 
             installed_version = Version(
                 installed_normalized
@@ -81,21 +99,29 @@ class UpdateChecker:
             )
 
         except InvalidVersion:
+
             return "Unknown"
 
         if installed_version < latest_version:
+
             return "Update Available"
 
         if installed_version == latest_version:
+
             return "Up to Date"
 
         return "Newer Than Latest"
+
+    # =================================================
+    # HTTP / JSON
+    # =================================================
 
     @staticmethod
     def fetch_json(url):
         """Fetch JSON data from a URL."""
 
         try:
+
             request = urllib.request.Request(
                 url,
                 headers={
@@ -112,7 +138,7 @@ class UpdateChecker:
                     "utf-8"
                 )
 
-                return json.loads(data)
+            return json.loads(data)
 
         except (
             urllib.error.URLError,
@@ -121,21 +147,32 @@ class UpdateChecker:
             json.JSONDecodeError,
             OSError
         ):
+
             return None
+
+    # =================================================
+    # Latest version dispatcher
+    # =================================================
 
     @classmethod
     def get_latest_version(cls, tool_name):
         """Retrieve the latest available version."""
 
-        # Python has a different API response format.
         if tool_name == "Python":
+
             return cls.get_python_latest_version()
+
         if tool_name == "Ngspice":
+
             return cls.get_ngspice_latest_version()
+
         if tool_name == "KiCad":
+
             return cls.get_kicad_latest_version()
 
-        source = cls.SOURCES.get(tool_name)
+        source = cls.SOURCES.get(
+            tool_name
+        )
 
         if not source:
             return None
@@ -154,10 +191,13 @@ class UpdateChecker:
         if not version:
             return None
 
-        if version.startswith("v"):
-            version = version[1:]
+        return cls.normalize_version(
+            version
+        )
 
-        return version
+    # =================================================
+    # Python
+    # =================================================
 
     @classmethod
     def get_python_latest_version(cls):
@@ -181,25 +221,39 @@ class UpdateChecker:
 
         for release in data:
 
-            name = release.get("name")
+            if not isinstance(release, dict):
+                continue
+
+            name = release.get(
+                "name"
+            )
 
             if not name:
                 continue
 
-            if not name.startswith("Python 3."):
+            if not name.startswith(
+                "Python 3."
+            ):
                 continue
 
             version = name.replace(
                 "Python ",
-                ""
+                "",
+                1
             ).strip()
 
             try:
+
                 parsed_version = Version(
                     version
                 )
 
             except InvalidVersion:
+
+                continue
+
+            # Ignore prerelease versions.
+            if parsed_version.is_prerelease:
                 continue
 
             versions.append(
@@ -209,12 +263,17 @@ class UpdateChecker:
         if not versions:
             return None
 
-        latest = max(versions)
+        return str(
+            max(versions)
+        )
 
-        return str(latest)
+    # =================================================
+    # Ngspice
+    # =================================================
+
     @classmethod
     def get_ngspice_latest_version(cls):
-        """Retrieve the latest Ngspice release version."""
+        """Retrieve the latest stable Ngspice release version."""
 
         url = (
             "https://sourceforge.net/projects/"
@@ -222,6 +281,7 @@ class UpdateChecker:
         )
 
         try:
+
             request = urllib.request.Request(
                 url,
                 headers={
@@ -239,8 +299,6 @@ class UpdateChecker:
                     errors="ignore"
                 )
 
-            import re
-
             versions = re.findall(
                 r"ngspice[-_](\d+)",
                 html,
@@ -250,11 +308,13 @@ class UpdateChecker:
             if not versions:
                 return None
 
+            numeric_versions = [
+                int(version)
+                for version in versions
+            ]
+
             return str(
-                max(
-                    int(version)
-                    for version in versions
-                )
+                max(numeric_versions)
             )
 
         except (
@@ -263,10 +323,16 @@ class UpdateChecker:
             TimeoutError,
             OSError
         ):
+
             return None
+
+    # =================================================
+    # KiCad
+    # =================================================
+
     @classmethod
     def get_kicad_latest_version(cls):
-        """Retrieve the latest stable KiCad 10 release."""
+        """Retrieve the latest stable KiCad release version."""
 
         url = (
             "https://gitlab.com/api/v4/projects/"
@@ -285,40 +351,85 @@ class UpdateChecker:
 
         for tag in data:
 
-            name = tag.get("name")
+            if not isinstance(tag, dict):
+                continue
+
+            name = tag.get(
+                "name"
+            )
 
             if not name:
                 continue
 
-            # Only accept stable KiCad 10.0.x releases.
+            name = str(name).strip()
+
+            # Remove a leading v.
+            name = name.lstrip("vV")
+
+            # Accept only stable numeric versions:
             #
-            # Examples accepted:
             # 10.0.0
-            # 10.0.4
-            # 10.0.5
+            # 10.0.1
+            # 10.1.0
+            # 9.0.0
             #
-            # Examples rejected:
-            # 10.0.5-rc1
-            # 10.99.0
-            # development versions
+            # Reject:
+            # 10.0.0-rc1
+            # 10.0.0-beta
+            # development tags
+            # 10.99.x development versions
 
             if not re.fullmatch(
-                r"10\.0\.\d+",
+                r"\d+\.\d+\.\d+",
                 name
             ):
                 continue
 
             try:
-                version = Version(name)
+
+                version = Version(
+                    name
+                )
 
             except InvalidVersion:
+
                 continue
 
-            versions.append(version)
+            # Ignore prerelease versions.
+            if version.is_prerelease:
+                continue
+
+            # -------------------------------------------------
+            # Ignore KiCad development versions.
+            #
+            # KiCad 10.99.x represents the development branch,
+            # not a stable public release.
+            # -------------------------------------------------
+
+            parts = name.split(".")
+
+            try:
+
+                major = int(parts[0])
+                minor = int(parts[1])
+
+            except (
+                ValueError,
+                IndexError
+            ):
+
+                continue
+
+            if major == 10 and minor >= 99:
+                continue
+
+            versions.append(
+                version
+            )
 
         if not versions:
             return None
 
-        latest = max(versions)
-
-        return str(latest)
+        return str(
+            max(versions)
+        )

@@ -16,12 +16,13 @@ import re
 import shutil
 import subprocess
 
-from config.config_manager import ConfigManager
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Optional
 
 from packaging.version import Version, InvalidVersion
 
+from config.config_manager import ConfigManager
 from config.tools import TOOLS
 
 
@@ -51,6 +52,10 @@ class DependencyChecker:
             for tool in TOOLS
         }
 
+    # -------------------------------------------------
+    # Check all tools
+    # -------------------------------------------------
+
     def check_all(self):
         """Check every configured tool."""
 
@@ -68,18 +73,29 @@ class DependencyChecker:
 
         return results
 
+    # -------------------------------------------------
+    # Check one tool
+    # -------------------------------------------------
+
     def check_tool(self, name, command, version_args):
         """Check whether a specific tool is installed."""
 
         configured_path = ConfigManager.get_path(name)
 
-        if configured_path and os.path.isfile(configured_path):
+        if (
+            configured_path
+            and os.path.isfile(configured_path)
+        ):
             path = configured_path
         else:
             path = shutil.which(command)
+
         minimum_version = self.tools[name]["minimum_version"]
 
+        # -------------------------------------------------
         # Tool not found
+        # -------------------------------------------------
+
         if path is None:
 
             return ToolResult(
@@ -88,23 +104,34 @@ class DependencyChecker:
                 version=None,
                 path=None,
                 status="Missing",
-                message=f"{name} was not found on this system.",
+                message=(
+                    f"{name} was not found on this system."
+                ),
                 compatible=False
             )
 
-        # Tool found, retrieve version
+        # -------------------------------------------------
+        # Tool found
+        # -------------------------------------------------
+
         version = self.get_version(
             path,
             version_args
         )
 
+        # -------------------------------------------------
         # Check compatibility
+        # -------------------------------------------------
+
         compatible = self.check_compatibility(
             version,
             minimum_version
         )
 
-        # Version is incompatible
+        # -------------------------------------------------
+        # Incompatible
+        # -------------------------------------------------
+
         if minimum_version and not compatible:
 
             return ToolResult(
@@ -120,18 +147,31 @@ class DependencyChecker:
                 compatible=False
             )
 
-        # Tool is installed and compatible
+        # -------------------------------------------------
+        # Installed
+        # -------------------------------------------------
+
         return ToolResult(
             name=name,
             installed=True,
             version=version,
             path=path,
             status="Installed",
-            message=f"{name} detected successfully.",
+            message=(
+                f"{name} detected successfully."
+            ),
             compatible=True
         )
 
-    def check_compatibility(self, version, minimum_version):
+    # -------------------------------------------------
+    # Compatibility
+    # -------------------------------------------------
+
+    def check_compatibility(
+        self,
+        version,
+        minimum_version
+    ):
         """Check whether an installed version meets the minimum version."""
 
         # No minimum version configured
@@ -139,7 +179,7 @@ class DependencyChecker:
             return True
 
         # No version detected
-        if not version:
+        if not version or version == "Unknown":
             return False
 
         try:
@@ -156,37 +196,140 @@ class DependencyChecker:
 
             return False
 
+    # -------------------------------------------------
+    # Extract version
+    # -------------------------------------------------
+
     @staticmethod
     def extract_version(version_output):
-        """Extract the numeric version from command output."""
+        """Extract a meaningful software version from command output."""
+
+        if not version_output:
+            raise InvalidVersion(
+                "Empty version output"
+            )
+
+        # -------------------------------------------------
+        # Ngspice-specific version format
+        #
+        # Example:
+        # ngspice-46
+        # -------------------------------------------------
+
+        ngspice_match = re.search(
+            r"ngspice[-\s]+(\d+(?:\.\d+)*)",
+            version_output,
+            re.IGNORECASE
+        )
+
+        if ngspice_match:
+            return ngspice_match.group(1)
+
+        # -------------------------------------------------
+        # Normal semantic version
+        #
+        # Examples:
+        # 3.12.0
+        # 2.40.0
+        # 9.0
+        # -------------------------------------------------
 
         match = re.search(
-            r"\d+(?:\.\d+)+",
+            r"\d+\.\d+(?:\.\d+)*",
             version_output
         )
 
-        if not match:
-            raise InvalidVersion(version_output)
+        if match:
+            return match.group(0)
 
-        return match.group(0)
+        # -------------------------------------------------
+        # Simple version such as:
+        #
+        # ngspice-46
+        # -------------------------------------------------
+
+        simple_match = re.search(
+            r"\b(\d+)\b",
+            version_output
+        )
+
+        if simple_match:
+            return simple_match.group(1)
+
+        raise InvalidVersion(
+            version_output
+        )
+
+    # -------------------------------------------------
+    # Get version
+    # -------------------------------------------------
 
     @staticmethod
     def get_version(command, version_args):
-        """Retrieve and normalize the installed version."""
+        """
+        Retrieve and normalize the installed version.
+
+        Ngspice requires special handling because the normal
+        ngspice.exe executable can open its graphical
+        interface when queried incorrectly.
+
+        The console executable ngspice_con.exe is therefore
+        used for version detection.
+        """
 
         try:
+
+            command_path = Path(command)
+
+            # -------------------------------------------------
+            # Special handling for Ngspice
+            # -------------------------------------------------
+
+            if (
+                command_path.name.lower()
+                == "ngspice.exe"
+            ):
+
+                console_executable = (
+                    command_path.parent
+                    / "ngspice_con.exe"
+                )
+
+                if console_executable.is_file():
+
+                    command = str(
+                        console_executable
+                    )
+
+                    # The console executable can print
+                    # its version without opening the GUI.
+                    version_args = ["-v"]
+
+            # -------------------------------------------------
+            # Run version command
+            # -------------------------------------------------
 
             result = subprocess.run(
                 [command] + version_args,
                 capture_output=True,
                 text=True,
-                timeout=5
+                timeout=5,
+                stdin=subprocess.DEVNULL,
+                creationflags=(
+                    subprocess.CREATE_NO_WINDOW
+                    if os.name == "nt"
+                    else 0
+                )
             )
 
             output = (
                 result.stdout.strip()
                 or result.stderr.strip()
             )
+
+            # -------------------------------------------------
+            # Extract version
+            # -------------------------------------------------
 
             return DependencyChecker.extract_version(
                 output

@@ -17,7 +17,6 @@ import customtkinter as ctk
 
 from utils.theme import Theme
 from services.dependency_checker import DependencyChecker
-from config.tools import TOOLS
 from gui.components.base_card import BaseCard
 from services.tool_installer import ToolInstaller
 
@@ -36,9 +35,15 @@ class ToolsLayout(ctk.CTkFrame):
         )
 
         self.on_scan_complete = on_scan_complete
+
         self.scanning = False
+        self.installing = False
 
         self.create_layout()
+
+    # =================================================
+    # Layout
+    # =================================================
 
     def create_layout(self):
         """Create the tools page."""
@@ -119,21 +124,25 @@ class ToolsLayout(ctk.CTkFrame):
 
         self.load_tools()
 
+    # =================================================
+    # Load Tools
+    # =================================================
+
     def load_tools(self):
         """Check and display all configured tools."""
 
-        for widget in self.tools_frame.winfo_children():
-            widget.destroy()
+        self.clear_tools_frame()
 
         checker = DependencyChecker()
 
         results = checker.check_all()
 
         for result in results:
+            self.create_tool_card(result)
 
-            self.create_tool_card(
-                result
-            )
+    # =================================================
+    # Tool Card
+    # =================================================
 
     def create_tool_card(self, result):
         """Create a card for one tool."""
@@ -252,6 +261,17 @@ class ToolsLayout(ctk.CTkFrame):
                     self.install_tool(name)
             )
 
+        elif result.status == "Incompatible":
+
+            action_button = ctk.CTkButton(
+                card,
+                text="Update",
+                width=110,
+                height=34,
+                command=lambda name=result.name:
+                    self.install_tool(name)
+            )
+
         else:
 
             action_button = ctk.CTkButton(
@@ -268,24 +288,314 @@ class ToolsLayout(ctk.CTkFrame):
             pady=(5, 15)
         )
 
-    def install_tool(self, tool_name):
-        """Open the official download page for a tool."""
+    # =================================================
+    # Installation
+    # =================================================
 
-        success = ToolInstaller.open_download_page(
-            tool_name
+    def install_tool(self, tool_name):
+        """Start installation of a supported tool."""
+
+        if self.installing or self.scanning:
+            return
+
+        self.installing = True
+
+        self.rescan_button.configure(
+            text="Installing...",
+            state="disabled"
         )
 
-        if not success:
+        self.show_install_status(
+            tool_name,
+            "Preparing installation..."
+        )
 
-            print(
-                f"No download page available for: "
-                f"{tool_name}"
+        thread = threading.Thread(
+            target=self._perform_install,
+            args=(tool_name,),
+            daemon=True
+        )
+
+        thread.start()
+
+    def _perform_install(self, tool_name):
+        """Perform installation in a background thread."""
+
+        try:
+
+            # =================================================
+            # Git
+            # =================================================
+
+            if tool_name == "Git":
+
+                self.after(
+                    0,
+                    lambda: self.show_install_status(
+                        "Git",
+                        "Finding latest Git installer..."
+                    )
+                )
+
+                installer_url = (
+                    ToolInstaller.get_latest_git_installer_url()
+                )
+
+                if not installer_url:
+
+                    raise RuntimeError(
+                        "Unable to find the latest "
+                        "Git installer."
+                    )
+
+                self.after(
+                    0,
+                    lambda: self.show_install_status(
+                        "Git",
+                        "Downloading Git installer..."
+                    )
+                )
+
+                filename = installer_url.rsplit(
+                    "/",
+                    1
+                )[-1]
+
+                installer_path = (
+                    ToolInstaller.download_file(
+                        installer_url,
+                        filename
+                    )
+                )
+
+                if not installer_path:
+
+                    raise RuntimeError(
+                        "Git installer download failed."
+                    )
+
+                self.after(
+                    0,
+                    lambda: self.show_install_status(
+                        "Git",
+                        "Launching Git installer..."
+                    )
+                )
+
+                launched = (
+                    ToolInstaller.launch_installer(
+                        installer_path
+                    )
+                )
+
+                if not launched:
+
+                    raise RuntimeError(
+                        "Unable to launch the "
+                        "Git installer."
+                    )
+
+                self.after(
+                    0,
+                    lambda: self.show_install_status(
+                        "Git",
+                        "Git installer launched.\n\n"
+                        "Complete the installation, "
+                        "then click Rescan."
+                    )
+                )
+
+            # =================================================
+            # Ngspice
+            # =================================================
+
+            elif tool_name == "Ngspice":
+
+                self.after(
+                    0,
+                    lambda: self.show_install_status(
+                        "Ngspice",
+                        "Checking Ngspice installation..."
+                    )
+                )
+
+                success, executable_path, message = (
+                    ToolInstaller.install_ngspice()
+                )
+
+                if not success:
+
+                    raise RuntimeError(
+                        message
+                    )
+
+                self.after(
+                    0,
+                    lambda message=message:
+                        self.show_install_status(
+                            "Ngspice",
+                            message
+                        )
+                )
+
+                self.after(
+                    1000,
+                    self._rescan_after_install
+                )
+
+                return
+
+            # =================================================
+            # Other tools
+            # =================================================
+
+            else:
+
+                success = (
+                    ToolInstaller.open_download_page(
+                        tool_name
+                    )
+                )
+
+                if not success:
+
+                    raise RuntimeError(
+                        f"No download page available "
+                        f"for {tool_name}."
+                    )
+
+                self.after(
+                    0,
+                    lambda name=tool_name:
+                        self.show_install_status(
+                            name,
+                            "Official download page opened.\n\n"
+                            "Complete the installation, "
+                            "then click Rescan."
+                        )
+                )
+
+        except Exception as error:
+
+            error_message = str(error)
+
+            self.after(
+                0,
+                lambda message=error_message:
+                    self.show_install_error(
+                        message
+                    )
             )
+
+        finally:
+
+            # Ngspice performs its own delayed rescan.
+            if tool_name != "Ngspice":
+
+                self.after(
+                    0,
+                    self._finish_install
+                )
+
+    # =================================================
+    # Installation UI
+    # =================================================
+
+    def show_install_status(
+        self,
+        tool_name,
+        message
+    ):
+        """Display installation status."""
+
+        if not self.winfo_exists():
+            return
+
+        self.clear_tools_frame()
+
+        status_label = ctk.CTkLabel(
+            self.tools_frame,
+            text=(
+                f"{tool_name}\n\n"
+                f"{message}"
+            ),
+            font=Theme.Fonts.BODY,
+            text_color=Theme.Colors.SUBTEXT
+        )
+
+        status_label.pack(
+            pady=30
+        )
+
+    def show_install_error(self, message):
+        """Display an installation error."""
+
+        if not self.winfo_exists():
+            return
+
+        self.clear_tools_frame()
+
+        error_label = ctk.CTkLabel(
+            self.tools_frame,
+            text=(
+                "Installation failed.\n\n"
+                f"{message}"
+            ),
+            font=Theme.Fonts.BODY,
+            text_color=Theme.Colors.ERROR
+        )
+
+        error_label.pack(
+            pady=30
+        )
+
+        self.installing = False
+
+        self.rescan_button.configure(
+            text="Rescan",
+            state="normal"
+        )
+
+    def clear_tools_frame(self):
+        """Remove all widgets from the tools container."""
+
+        for widget in self.tools_frame.winfo_children():
+            widget.destroy()
+
+    def _finish_install(self):
+        """Finish a normal installation operation."""
+
+        if not self.winfo_exists():
+            return
+
+        if self.scanning:
+            return
+
+        self.installing = False
+
+        self.rescan_button.configure(
+            text="Rescan",
+            state="normal"
+        )
+
+    def _rescan_after_install(self):
+        """Rescan tools after successful Ngspice installation."""
+
+        if not self.winfo_exists():
+            return
+
+        self.installing = False
+
+        self.rescan()
+
+    # =================================================
+    # Rescan
+    # =================================================
 
     def rescan(self):
         """Start a background dependency scan."""
 
-        if self.scanning:
+        if self.scanning or self.installing:
             return
 
         self.scanning = True
@@ -295,12 +605,33 @@ class ToolsLayout(ctk.CTkFrame):
             state="disabled"
         )
 
+        self.show_scan_status()
+
         thread = threading.Thread(
             target=self._perform_rescan,
             daemon=True
         )
 
         thread.start()
+
+    def show_scan_status(self):
+        """Display the scanning status."""
+
+        if not self.winfo_exists():
+            return
+
+        self.clear_tools_frame()
+
+        status_label = ctk.CTkLabel(
+            self.tools_frame,
+            text="Scanning installed tools...",
+            font=Theme.Fonts.BODY,
+            text_color=Theme.Colors.SUBTEXT
+        )
+
+        status_label.pack(
+            pady=30
+        )
 
     def _perform_rescan(self):
         """Perform the dependency scan in the background."""
@@ -337,22 +668,17 @@ class ToolsLayout(ctk.CTkFrame):
         if not self.winfo_exists():
             return
 
-        for widget in self.tools_frame.winfo_children():
-            widget.destroy()
+        self.clear_tools_frame()
 
         for result in results:
-
-            self.create_tool_card(
-                result
-            )
+            self.create_tool_card(result)
 
         if self.on_scan_complete:
-
-            self.on_scan_complete(
-                results
-            )
+            self.on_scan_complete(results)
 
         self.scanning = False
+
+        self.installing = False
 
         self.rescan_button.configure(
             text="Rescan",
@@ -360,19 +686,32 @@ class ToolsLayout(ctk.CTkFrame):
         )
 
     def _display_rescan_error(self, error_message):
-        """Display a rescan error."""
+        """Display a dependency scan error."""
 
         if not self.winfo_exists():
             return
 
         self.scanning = False
 
+        self.installing = False
+
         self.rescan_button.configure(
             text="Rescan",
             state="normal"
         )
 
-        print(
-            f"Dependency scan failed: "
-            f"{error_message}"
+        self.clear_tools_frame()
+
+        error_label = ctk.CTkLabel(
+            self.tools_frame,
+            text=(
+                "Dependency scan failed.\n\n"
+                f"{error_message}"
+            ),
+            font=Theme.Fonts.BODY,
+            text_color=Theme.Colors.ERROR
+        )
+
+        error_label.pack(
+            pady=30
         )
