@@ -74,23 +74,160 @@ class DependencyChecker:
         return results
 
     # -------------------------------------------------
+    # Find KiCad
+    # -------------------------------------------------
+
+    @staticmethod
+    def find_kicad_executable():
+        """
+        Find the installed KiCad executable on Windows.
+
+        KiCad is normally installed under:
+
+        C:\\Program Files\\KiCad\\10.0\\bin\\kicad.exe
+
+        KiCad may not be added to PATH, so shutil.which()
+        cannot reliably detect it.
+        """
+
+        if not platform_is_windows():
+            return None
+
+        possible_roots = []
+
+        # -------------------------------------------------
+        # Standard 64-bit Program Files locations
+        # -------------------------------------------------
+
+        program_files = os.environ.get(
+            "ProgramFiles"
+        )
+
+        program_w6432 = os.environ.get(
+            "ProgramW6432"
+        )
+
+        if program_files:
+
+            possible_roots.append(
+                Path(program_files)
+                / "KiCad"
+            )
+
+        if program_w6432:
+
+            possible_roots.append(
+                Path(program_w6432)
+                / "KiCad"
+            )
+
+        # -------------------------------------------------
+        # Standard fallback
+        # -------------------------------------------------
+
+        possible_roots.append(
+            Path(
+                "C:/Program Files/KiCad"
+            )
+        )
+
+        # -------------------------------------------------
+        # Search version directories
+        # -------------------------------------------------
+
+        for root in possible_roots:
+
+            if not root.is_dir():
+                continue
+
+            try:
+
+                executables = list(
+                    root.glob(
+                        "*/bin/kicad.exe"
+                    )
+                )
+
+            except OSError:
+
+                continue
+
+            if executables:
+
+                # Sort descending so the newest
+                # installed KiCad version is selected.
+                executables.sort(
+                    reverse=True
+                )
+
+                return str(
+                    executables[0]
+                )
+
+        return None
+
+    # -------------------------------------------------
     # Check one tool
     # -------------------------------------------------
 
-    def check_tool(self, name, command, version_args):
+    def check_tool(
+        self,
+        name,
+        command,
+        version_args
+    ):
         """Check whether a specific tool is installed."""
 
-        configured_path = ConfigManager.get_path(name)
+        configured_path = (
+            ConfigManager.get_path(
+                name
+            )
+        )
+
+        # -------------------------------------------------
+        # Use configured path first
+        # -------------------------------------------------
 
         if (
             configured_path
-            and os.path.isfile(configured_path)
+            and os.path.isfile(
+                configured_path
+            )
         ):
-            path = configured_path
-        else:
-            path = shutil.which(command)
 
-        minimum_version = self.tools[name]["minimum_version"]
+            path = configured_path
+
+        else:
+
+            path = shutil.which(
+                command
+            )
+
+        # -------------------------------------------------
+        # Special handling for KiCad
+        # -------------------------------------------------
+
+        if (
+            path is None
+            and name == "KiCad"
+        ):
+
+            path = (
+                self.find_kicad_executable()
+            )
+
+            # Save discovered KiCad path so
+            # future scans can use it directly.
+            if path:
+
+                ConfigManager.set_path(
+                    "KiCad",
+                    path
+                )
+
+        minimum_version = (
+            self.tools[name]["minimum_version"]
+        )
 
         # -------------------------------------------------
         # Tool not found
@@ -123,16 +260,21 @@ class DependencyChecker:
         # Check compatibility
         # -------------------------------------------------
 
-        compatible = self.check_compatibility(
-            version,
-            minimum_version
+        compatible = (
+            self.check_compatibility(
+                version,
+                minimum_version
+            )
         )
 
         # -------------------------------------------------
         # Incompatible
         # -------------------------------------------------
 
-        if minimum_version and not compatible:
+        if (
+            minimum_version
+            and not compatible
+        ):
 
             return ToolResult(
                 name=name,
@@ -142,7 +284,8 @@ class DependencyChecker:
                 status="Incompatible",
                 message=(
                     f"{name} version is below the "
-                    f"required version {minimum_version}."
+                    f"required version "
+                    f"{minimum_version}."
                 ),
                 compatible=False
             )
@@ -179,17 +322,24 @@ class DependencyChecker:
             return True
 
         # No version detected
-        if not version or version == "Unknown":
+        if (
+            not version
+            or version == "Unknown"
+        ):
+
             return False
 
         try:
 
-            actual_version = self.extract_version(
-                version
+            actual_version = (
+                self.extract_version(
+                    version
+                )
             )
 
-            return Version(actual_version) >= Version(
-                minimum_version
+            return (
+                Version(actual_version)
+                >= Version(minimum_version)
             )
 
         except InvalidVersion:
@@ -205,6 +355,7 @@ class DependencyChecker:
         """Extract a meaningful software version from command output."""
 
         if not version_output:
+
             raise InvalidVersion(
                 "Empty version output"
             )
@@ -223,7 +374,10 @@ class DependencyChecker:
         )
 
         if ngspice_match:
-            return ngspice_match.group(1)
+
+            return (
+                ngspice_match.group(1)
+            )
 
         # -------------------------------------------------
         # Normal semantic version
@@ -232,6 +386,7 @@ class DependencyChecker:
         # 3.12.0
         # 2.40.0
         # 9.0
+        # 10.0.5
         # -------------------------------------------------
 
         match = re.search(
@@ -240,6 +395,7 @@ class DependencyChecker:
         )
 
         if match:
+
             return match.group(0)
 
         # -------------------------------------------------
@@ -254,7 +410,10 @@ class DependencyChecker:
         )
 
         if simple_match:
-            return simple_match.group(1)
+
+            return (
+                simple_match.group(1)
+            )
 
         raise InvalidVersion(
             version_output
@@ -265,21 +424,25 @@ class DependencyChecker:
     # -------------------------------------------------
 
     @staticmethod
-    def get_version(command, version_args):
+    def get_version(
+        command,
+        version_args
+    ):
         """
         Retrieve and normalize the installed version.
 
-        Ngspice requires special handling because the normal
-        ngspice.exe executable can open its graphical
-        interface when queried incorrectly.
+        Ngspice uses ngspice_con.exe for version detection.
 
-        The console executable ngspice_con.exe is therefore
-        used for version detection.
+        KiCad uses kicad-cli.exe because kicad.exe is the
+        graphical application and should not be launched
+        during dependency scanning.
         """
 
         try:
 
-            command_path = Path(command)
+            command_path = Path(
+                command
+            )
 
             # -------------------------------------------------
             # Special handling for Ngspice
@@ -301,16 +464,42 @@ class DependencyChecker:
                         console_executable
                     )
 
-                    # The console executable can print
-                    # its version without opening the GUI.
-                    version_args = ["-v"]
+                    version_args = [
+                        "-v"
+                    ]
+
+            # -------------------------------------------------
+            # Special handling for KiCad
+            # -------------------------------------------------
+
+            elif (
+                command_path.name.lower()
+                == "kicad.exe"
+            ):
+
+                cli_executable = (
+                    command_path.parent
+                    / "kicad-cli.exe"
+                )
+
+                if cli_executable.is_file():
+
+                    command = str(
+                        cli_executable
+                    )
+
+                    version_args = [
+                        "--version"
+                    ]
 
             # -------------------------------------------------
             # Run version command
             # -------------------------------------------------
 
             result = subprocess.run(
-                [command] + version_args,
+                [
+                    command
+                ] + version_args,
                 capture_output=True,
                 text=True,
                 timeout=5,
@@ -331,8 +520,10 @@ class DependencyChecker:
             # Extract version
             # -------------------------------------------------
 
-            return DependencyChecker.extract_version(
-                output
+            return (
+                DependencyChecker.extract_version(
+                    output
+                )
             )
 
         except (
@@ -342,3 +533,13 @@ class DependencyChecker:
         ):
 
             return "Unknown"
+
+
+# -------------------------------------------------
+# Platform helper
+# -------------------------------------------------
+
+def platform_is_windows():
+    """Return True when running on Windows."""
+
+    return os.name == "nt"
