@@ -56,6 +56,18 @@ class ToolInstaller:
     )
 
     # =================================================
+    # WinGet
+    # =================================================
+
+    WINGET_TIMEOUT = 900
+
+    WINGET_PACKAGES = {
+        "Git": "Git.Git",
+        "Python": "Python.Python.3.12",
+        "KiCad": "KiCad.KiCad",
+    }
+
+    # =================================================
     # KiCad
     # =================================================
 
@@ -126,14 +138,350 @@ class ToolInstaller:
             return False
 
         try:
+
             webbrowser.open(url)
+
             return True
 
         except OSError:
+
             return False
 
     # =================================================
-    # Git
+    # WinGet
+    # =================================================
+
+    @classmethod
+    def get_winget_command(cls):
+        """
+        Return the WinGet executable path.
+
+        WinGet is used for automated installation and
+        updating of supported Windows tools.
+        """
+
+        if platform.system() != "Windows":
+            return None
+
+        return shutil.which(
+            "winget.exe"
+        )
+
+    @classmethod
+    def run_winget(cls, arguments):
+        """
+        Execute a WinGet command.
+
+        The command automatically accepts source and
+        package agreements and uses silent installation.
+
+        Returns:
+            tuple:
+                success: bool
+                output: str
+        """
+
+        winget = cls.get_winget_command()
+
+        if not winget:
+
+            return (
+                False,
+                "WinGet is not available on this system."
+            )
+
+        command = [
+            winget,
+            *arguments,
+            "--source",
+            "winget",
+            "--accept-source-agreements",
+            "--accept-package-agreements",
+        ]
+
+        try:
+
+            result = subprocess.run(
+                command,
+                capture_output=True,
+                text=True,
+                timeout=cls.WINGET_TIMEOUT,
+                stdin=subprocess.DEVNULL,
+                creationflags=(
+                    subprocess.CREATE_NO_WINDOW
+                    if os.name == "nt"
+                    else 0
+                )
+            )
+
+            output_parts = []
+
+            if result.stdout:
+                output_parts.append(
+                    result.stdout.strip()
+                )
+
+            if result.stderr:
+                output_parts.append(
+                    result.stderr.strip()
+                )
+
+            output = "\n".join(
+                part
+                for part in output_parts
+                if part
+            )
+
+            return (
+                result.returncode == 0,
+                output
+            )
+
+        except subprocess.TimeoutExpired:
+
+            return (
+                False,
+                "WinGet operation timed out."
+            )
+
+        except (
+            subprocess.SubprocessError,
+            OSError
+        ) as exc:
+
+            return (
+                False,
+                str(exc)
+            )
+
+    @classmethod
+    def winget_install(cls, package_id):
+        """
+        Install a package automatically using WinGet.
+        """
+
+        return cls.run_winget(
+            [
+                "install",
+                "--id",
+                package_id,
+                "-e",
+                "--silent",
+            ]
+        )
+
+    @classmethod
+    def winget_upgrade(cls, package_id):
+        """
+        Upgrade a package automatically using WinGet.
+        """
+
+        return cls.run_winget(
+            [
+                "upgrade",
+                "--id",
+                package_id,
+                "-e",
+                "--silent",
+            ]
+        )
+
+    @classmethod
+    def install_with_winget(cls, tool_name):
+        """
+        Automatically install a supported tool using WinGet.
+        """
+
+        package_id = cls.WINGET_PACKAGES.get(
+            tool_name
+        )
+
+        if not package_id:
+
+            return (
+                False,
+                None,
+                f"No WinGet package is configured "
+                f"for {tool_name}."
+            )
+
+        success, output = cls.winget_install(
+            package_id
+        )
+
+        if not success:
+
+            return (
+                False,
+                None,
+                f"Unable to install {tool_name} "
+                f"automatically using WinGet.\n"
+                f"{output}"
+            )
+
+        return (
+            True,
+            package_id,
+            f"{tool_name} installed successfully "
+            f"using WinGet."
+        )
+
+    @classmethod
+    def update_with_winget(cls, tool_name):
+        """
+        Automatically update a supported tool using WinGet.
+
+        If no newer version is available, the operation is
+        considered successful because the tool is already
+        up to date.
+        """
+
+        package_id = cls.WINGET_PACKAGES.get(
+            tool_name
+        )
+
+        if not package_id:
+
+            return (
+                False,
+                None,
+                f"No WinGet package is configured "
+                f"for {tool_name}."
+            )
+
+        success, output = cls.winget_upgrade(
+            package_id
+        )
+
+        if success:
+
+            return (
+                True,
+                package_id,
+                f"{tool_name} updated successfully "
+                f"using WinGet."
+            )
+
+        # -------------------------------------------------
+        # WinGet reports that no update exists.
+        # -------------------------------------------------
+
+        normalized_output = (
+            output.lower()
+        )
+
+        if (
+            "no available upgrade found"
+            in normalized_output
+            or
+            "no newer package versions"
+            in normalized_output
+        ):
+
+            return (
+                True,
+                package_id,
+                f"{tool_name} is already up to date."
+            )
+
+        return (
+            False,
+            None,
+            f"Unable to update {tool_name} "
+            f"automatically using WinGet.\n"
+            f"{output}"
+        )
+
+    # =================================================
+    # Git automated installation/update
+    # =================================================
+
+    @classmethod
+    def install_git(cls):
+        """
+        Automatically install Git using WinGet.
+        """
+
+        if platform.system() != "Windows":
+
+            return (
+                False,
+                None,
+                "Git automatic installation is "
+                "supported on Windows only."
+            )
+
+        return cls.install_with_winget(
+            "Git"
+        )
+
+    @classmethod
+    def update_git(cls):
+        """
+        Automatically update Git using WinGet.
+        """
+
+        if platform.system() != "Windows":
+
+            return (
+                False,
+                None,
+                "Git automatic update is "
+                "supported on Windows only."
+            )
+
+        return cls.update_with_winget(
+            "Git"
+        )
+
+    # =================================================
+    # Python automated installation/update
+    # =================================================
+
+    @classmethod
+    def install_python(cls):
+        """
+        Automatically install Python 3.12 using WinGet.
+        """
+
+        if platform.system() != "Windows":
+
+            return (
+                False,
+                None,
+                "Python automatic installation is "
+                "supported on Windows only."
+            )
+
+        return cls.install_with_winget(
+            "Python"
+        )
+
+    @classmethod
+    def update_python(cls):
+        """
+        Automatically update Python 3.12 using WinGet.
+
+        This manages the system Python installation.
+        The eSim Companion virtual environment is not
+        replaced while the application is running.
+        """
+
+        if platform.system() != "Windows":
+
+            return (
+                False,
+                None,
+                "Python automatic update is "
+                "supported on Windows only."
+            )
+
+        return cls.update_with_winget(
+            "Python"
+        )
+
+    # =================================================
+    # Git official installer fallback
     # =================================================
 
     @classmethod
@@ -144,6 +492,7 @@ class ToolInstaller:
             return None
 
         try:
+
             request = urllib.request.Request(
                 cls.GIT_RELEASE_API,
                 headers={
@@ -197,7 +546,12 @@ class ToolInstaller:
 
     @classmethod
     def download_git_installer(cls):
-        """Download the latest official Git x64 installer."""
+        """
+        Download the latest official Git x64 installer.
+
+        This remains available as a fallback for the
+        existing application functionality.
+        """
 
         url = cls.get_latest_git_installer_url()
 
@@ -232,6 +586,7 @@ class ToolInstaller:
             return False
 
         try:
+
             os.startfile(
                 str(path)
             )
@@ -239,6 +594,7 @@ class ToolInstaller:
             return True
 
         except OSError:
+
             return False
 
     # =================================================
@@ -279,9 +635,11 @@ class ToolInstaller:
             if destination.exists():
 
                 try:
+
                     destination.unlink()
 
                 except OSError:
+
                     return None
 
             # -------------------------------------------------
@@ -454,6 +812,7 @@ class ToolInstaller:
             )
 
             try:
+
                 destination.unlink(
                     missing_ok=True
                 )
@@ -665,6 +1024,7 @@ class ToolInstaller:
                         return installer
 
                 except OSError:
+
                     return None
 
             return None
@@ -716,12 +1076,10 @@ class ToolInstaller:
     @classmethod
     def install_kicad(cls):
         """
-        Download and launch the official KiCad
-        Windows x86-64 installer.
+        Automatically install KiCad using WinGet.
 
-        If the installer has already been downloaded,
-        reuse the existing installer instead of
-        downloading the large file again.
+        After installation, the installed KiCad executable
+        is detected and saved in ConfigManager.
         """
 
         if platform.system() != "Windows":
@@ -729,8 +1087,8 @@ class ToolInstaller:
             return (
                 False,
                 None,
-                "KiCad installation is supported "
-                "on Windows only."
+                "KiCad automatic installation is "
+                "supported on Windows only."
             )
 
         # =================================================
@@ -759,126 +1117,123 @@ class ToolInstaller:
             )
 
         # =================================================
-        # Find latest installer
+        # Automated WinGet installation
         # =================================================
 
-        installer_url = (
-            cls.get_latest_kicad_installer_url()
+        success, package_id, message = (
+            cls.install_with_winget(
+                "KiCad"
+            )
         )
 
-        if not installer_url:
+        if not success:
 
             return (
                 False,
                 None,
-                "Unable to find the official "
-                "KiCad Windows x64 installer."
+                message
             )
 
         # =================================================
-        # Determine filename
+        # Verify installation
         # =================================================
 
-        filename = (
-            installer_url
-            .split(
-                "?",
-                1
-            )[0]
-            .rsplit(
-                "/",
-                1
-            )[-1]
+        executable = (
+            cls.get_kicad_installed_executable()
         )
 
-        if not filename.lower().endswith(
-            ".exe"
-        ):
-
-            filename = (
-                "kicad-windows-installer.exe"
-            )
-
-        # =================================================
-        # Check for existing downloaded installer
-        # =================================================
-
-        existing_installer = (
-            cls.get_existing_kicad_installer(
-                filename
-            )
-        )
-
-        if existing_installer:
-
-            installer_path = str(
-                existing_installer
-            )
-
-            print(
-                f"Using existing KiCad installer: "
-                f"{installer_path}"
-            )
-
-        else:
-
-            # =================================================
-            # Download installer
-            # =================================================
-
-            print(
-                "KiCad installer not found locally."
-            )
-
-            print(
-                "Starting KiCad installer download..."
-            )
-
-            installer_path = (
-                cls.download_file(
-                    installer_url,
-                    filename
-                )
-            )
-
-            if not installer_path:
-
-                return (
-                    False,
-                    None,
-                    "Unable to download the "
-                    "KiCad installer."
-                )
-
-        # =================================================
-        # Launch installer
-        # =================================================
-
-        launched = (
-            cls.launch_installer(
-                installer_path
-            )
-        )
-
-        if not launched:
+        if not executable:
 
             return (
                 False,
-                installer_path,
-                "KiCad installer is available "
-                "but could not be launched."
+                None,
+                "KiCad installation completed, "
+                "but the installed executable "
+                "could not be detected."
             )
 
         # =================================================
-        # Return success
+        # Save configuration
         # =================================================
+
+        ConfigManager.set_path(
+            "KiCad",
+            str(
+                executable
+            )
+        )
 
         return (
             True,
-            installer_path,
-            "KiCad installer launched successfully. "
-            "Complete the installation, then click "
-            "Rescan."
+            str(
+                executable
+            ),
+            "KiCad installed automatically "
+            "and verified successfully."
+        )
+
+    @classmethod
+    def update_kicad(cls):
+        """
+        Automatically update KiCad using WinGet.
+
+        After the update, the installed executable is
+        detected and the configuration path is refreshed.
+        """
+
+        if platform.system() != "Windows":
+
+            return (
+                False,
+                None,
+                "KiCad automatic update is "
+                "supported on Windows only."
+            )
+
+        success, package_id, message = (
+            cls.update_with_winget(
+                "KiCad"
+            )
+        )
+
+        if not success:
+
+            return (
+                False,
+                None,
+                message
+            )
+
+        # =================================================
+        # Refresh installed executable
+        # =================================================
+
+        executable = (
+            cls.get_kicad_installed_executable()
+        )
+
+        if executable:
+
+            ConfigManager.set_path(
+                "KiCad",
+                str(
+                    executable
+                )
+
+            )
+
+            return (
+                True,
+                str(
+                    executable
+                ),
+                message
+            )
+
+        return (
+            True,
+            None,
+            message
         )
 
     # =================================================
