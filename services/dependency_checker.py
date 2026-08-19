@@ -74,6 +74,124 @@ class DependencyChecker:
         return results
 
     # -------------------------------------------------
+    # Find managed Python
+    # -------------------------------------------------
+
+    @staticmethod
+    def find_python_executable():
+        """
+        Find the system Python 3.12 installation managed by
+        the configured WinGet package.
+
+        The active virtual environment is deliberately not
+        selected because it belongs to eSim Companion itself.
+        """
+
+        if not platform_is_windows():
+            return None
+
+        # -------------------------------------------------
+        # Prefer Windows Python Launcher.
+        #
+        # This avoids accidentally selecting the project's
+        # virtual environment.
+        # -------------------------------------------------
+
+        py_launcher = shutil.which(
+            "py.exe"
+        )
+
+        if py_launcher:
+
+            try:
+
+                result = subprocess.run(
+                    [
+                        py_launcher,
+                        "-3.12",
+                        "-c",
+                        "import sys; print(sys.executable)"
+                    ],
+                    capture_output=True,
+                    text=True,
+                    timeout=5,
+                    stdin=subprocess.DEVNULL,
+                    creationflags=(
+                        subprocess.CREATE_NO_WINDOW
+                        if os.name == "nt"
+                        else 0
+                    )
+                )
+
+                path = result.stdout.strip()
+
+                if (
+                    path
+                    and os.path.isfile(path)
+                ):
+
+                    return path
+
+            except (
+                subprocess.SubprocessError,
+                OSError
+            ):
+
+                pass
+
+        # -------------------------------------------------
+        # Fallback:
+        #
+        # Standard per-user Python 3.12 installation.
+        # -------------------------------------------------
+
+        local_app_data = os.environ.get(
+            "LocalAppData"
+        )
+
+        if local_app_data:
+
+            fallback = (
+                Path(local_app_data)
+                / "Programs"
+                / "Python"
+                / "Python312"
+                / "python.exe"
+            )
+
+            if fallback.is_file():
+
+                return str(
+                    fallback
+                )
+
+        # -------------------------------------------------
+        # Fallback:
+        #
+        # Standard system-wide Python 3.12 installation.
+        # -------------------------------------------------
+
+        program_files = os.environ.get(
+            "ProgramFiles"
+        )
+
+        if program_files:
+
+            fallback = (
+                Path(program_files)
+                / "Python312"
+                / "python.exe"
+            )
+
+            if fallback.is_file():
+
+                return str(
+                    fallback
+                )
+
+        return None
+
+    # -------------------------------------------------
     # Find KiCad
     # -------------------------------------------------
 
@@ -154,8 +272,6 @@ class DependencyChecker:
 
             if executables:
 
-                # Sort descending so the newest
-                # installed KiCad version is selected.
                 executables.sort(
                     reverse=True
                 )
@@ -185,23 +301,43 @@ class DependencyChecker:
         )
 
         # -------------------------------------------------
-        # Use configured path first
+        # Python is managed separately from the project's
+        # virtual environment.
         # -------------------------------------------------
 
-        if (
-            configured_path
-            and os.path.isfile(
-                configured_path
-            )
-        ):
+        if name == "Python":
 
-            path = configured_path
+            path = (
+                self.find_python_executable()
+            )
+
+            if path:
+
+                ConfigManager.set_path(
+                    "Python",
+                    path
+                )
 
         else:
 
-            path = shutil.which(
-                command
-            )
+            # -------------------------------------------------
+            # Use configured path first
+            # -------------------------------------------------
+
+            if (
+                configured_path
+                and os.path.isfile(
+                    configured_path
+                )
+            ):
+
+                path = configured_path
+
+            else:
+
+                path = shutil.which(
+                    command
+                )
 
         # -------------------------------------------------
         # Special handling for KiCad
@@ -216,8 +352,6 @@ class DependencyChecker:
                 self.find_kicad_executable()
             )
 
-            # Save discovered KiCad path so
-            # future scans can use it directly.
             if path:
 
                 ConfigManager.set_path(
@@ -317,11 +451,9 @@ class DependencyChecker:
     ):
         """Check whether an installed version meets the minimum version."""
 
-        # No minimum version configured
         if not minimum_version:
             return True
 
-        # No version detected
         if (
             not version
             or version == "Unknown"
@@ -362,9 +494,6 @@ class DependencyChecker:
 
         # -------------------------------------------------
         # Ngspice-specific version format
-        #
-        # Example:
-        # ngspice-46
         # -------------------------------------------------
 
         ngspice_match = re.search(
@@ -381,12 +510,6 @@ class DependencyChecker:
 
         # -------------------------------------------------
         # Normal semantic version
-        #
-        # Examples:
-        # 3.12.0
-        # 2.40.0
-        # 9.0
-        # 10.0.5
         # -------------------------------------------------
 
         match = re.search(
@@ -399,9 +522,7 @@ class DependencyChecker:
             return match.group(0)
 
         # -------------------------------------------------
-        # Simple version such as:
-        #
-        # ngspice-46
+        # Simple version
         # -------------------------------------------------
 
         simple_match = re.search(
@@ -431,11 +552,10 @@ class DependencyChecker:
         """
         Retrieve and normalize the installed version.
 
-        Ngspice uses ngspice_con.exe for version detection.
+        Ngspice uses ngspice_con.exe.
 
-        KiCad uses kicad-cli.exe because kicad.exe is the
-        graphical application and should not be launched
-        during dependency scanning.
+        KiCad uses kicad-cli.exe because kicad.exe is
+        graphical.
         """
 
         try:
@@ -445,7 +565,7 @@ class DependencyChecker:
             )
 
             # -------------------------------------------------
-            # Special handling for Ngspice
+            # Ngspice
             # -------------------------------------------------
 
             if (
@@ -469,7 +589,7 @@ class DependencyChecker:
                     ]
 
             # -------------------------------------------------
-            # Special handling for KiCad
+            # KiCad
             # -------------------------------------------------
 
             elif (
@@ -515,10 +635,6 @@ class DependencyChecker:
                 result.stdout.strip()
                 or result.stderr.strip()
             )
-
-            # -------------------------------------------------
-            # Extract version
-            # -------------------------------------------------
 
             return (
                 DependencyChecker.extract_version(

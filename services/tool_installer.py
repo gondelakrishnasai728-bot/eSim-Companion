@@ -3,7 +3,8 @@
 File Name : tool_installer.py
 
 Purpose:
-Handles installation actions for external eSim tools.
+Handles installation and update actions for external
+eSim tools.
 
 Author : Krishna Sai
 Project : eSim Companion
@@ -16,6 +17,7 @@ import platform
 import re
 import shutil
 import subprocess
+import time
 import urllib.error
 import urllib.request
 from pathlib import Path
@@ -25,11 +27,11 @@ from config.config_manager import ConfigManager
 
 
 class ToolInstaller:
-    """Handles installation actions for supported tools."""
+    """Handles installation and update actions for supported tools."""
 
-    # -------------------------------------------------
-    # Download pages
-    # -------------------------------------------------
+    # =================================================
+    # Official download pages
+    # =================================================
 
     DOWNLOAD_PAGES = {
         "Git": (
@@ -91,16 +93,23 @@ class ToolInstaller:
     # Ngspice
     # =================================================
 
+    # Retained for compatibility with existing code.
+    #
+    # Installation and update operations do NOT rely
+    # on this value. The official SourceForge page is
+    # checked dynamically.
     NGSPICE_VERSION = "46"
 
     NGSPICE_DOWNLOAD_URL = (
         "https://sourceforge.net/projects/"
         "ngspice/files/ng-spice-rework/"
-        "old-releases/46/"
+        "46/"
         "ngspice-46_64.7z/download"
     )
 
-    NGSPICE_ARCHIVE_NAME = "ngspice-46_64.7z"
+    NGSPICE_ARCHIVE_NAME = (
+        "ngspice-46_64.7z"
+    )
 
     NGSPICE_INSTALL_DIRECTORY = (
         Path.home()
@@ -108,6 +117,13 @@ class ToolInstaller:
         / "eSim-Companion"
         / "Ngspice"
     )
+
+    # Number of times SourceForge is queried when
+    # determining the latest Ngspice release.
+    NGSPICE_VERSION_CHECK_RETRIES = 3
+
+    # Delay between failed SourceForge requests.
+    NGSPICE_RETRY_DELAY = 2
 
     # =================================================
     # General settings
@@ -138,13 +154,10 @@ class ToolInstaller:
             return False
 
         try:
-
             webbrowser.open(url)
-
             return True
 
         except OSError:
-
             return False
 
     # =================================================
@@ -168,12 +181,24 @@ class ToolInstaller:
         )
 
     @classmethod
-    def run_winget(cls, arguments):
+    def run_winget(
+        cls,
+        arguments,
+        accept_package_agreement=True
+    ):
         """
         Execute a WinGet command.
 
-        The command automatically accepts source and
-        package agreements and uses silent installation.
+        Source agreements are automatically accepted.
+
+        Package agreements are accepted by default for
+        install and upgrade operations.
+
+        Some WinGet commands, such as `show`, do not
+        support --accept-package-agreements. Therefore
+        callers can disable that option by passing:
+
+            accept_package_agreement=False
 
         Returns:
             tuple:
@@ -190,14 +215,28 @@ class ToolInstaller:
                 "WinGet is not available on this system."
             )
 
+        # -------------------------------------------------
+        # Base WinGet command
+        # -------------------------------------------------
+
         command = [
             winget,
             *arguments,
             "--source",
             "winget",
             "--accept-source-agreements",
-            "--accept-package-agreements",
         ]
+
+        # -------------------------------------------------
+        # Package agreements are required for operations
+        # such as install and upgrade, but NOT for `show`.
+        # -------------------------------------------------
+
+        if accept_package_agreement:
+
+            command.append(
+                "--accept-package-agreements"
+            )
 
         try:
 
@@ -217,11 +256,13 @@ class ToolInstaller:
             output_parts = []
 
             if result.stdout:
+
                 output_parts.append(
                     result.stdout.strip()
                 )
 
             if result.stderr:
+
                 output_parts.append(
                     result.stderr.strip()
                 )
@@ -256,9 +297,7 @@ class ToolInstaller:
 
     @classmethod
     def winget_install(cls, package_id):
-        """
-        Install a package automatically using WinGet.
-        """
+        """Install a package automatically using WinGet."""
 
         return cls.run_winget(
             [
@@ -272,9 +311,7 @@ class ToolInstaller:
 
     @classmethod
     def winget_upgrade(cls, package_id):
-        """
-        Upgrade a package automatically using WinGet.
-        """
+        """Upgrade a package automatically using WinGet."""
 
         return cls.run_winget(
             [
@@ -288,9 +325,7 @@ class ToolInstaller:
 
     @classmethod
     def install_with_winget(cls, tool_name):
-        """
-        Automatically install a supported tool using WinGet.
-        """
+        """Automatically install a supported tool using WinGet."""
 
         package_id = cls.WINGET_PACKAGES.get(
             tool_name
@@ -362,10 +397,6 @@ class ToolInstaller:
                 f"using WinGet."
             )
 
-        # -------------------------------------------------
-        # WinGet reports that no update exists.
-        # -------------------------------------------------
-
         normalized_output = (
             output.lower()
         )
@@ -398,9 +429,7 @@ class ToolInstaller:
 
     @classmethod
     def install_git(cls):
-        """
-        Automatically install Git using WinGet.
-        """
+        """Automatically install Git using WinGet."""
 
         if platform.system() != "Windows":
 
@@ -417,9 +446,7 @@ class ToolInstaller:
 
     @classmethod
     def update_git(cls):
-        """
-        Automatically update Git using WinGet.
-        """
+        """Automatically update Git using WinGet."""
 
         if platform.system() != "Windows":
 
@@ -440,9 +467,7 @@ class ToolInstaller:
 
     @classmethod
     def install_python(cls):
-        """
-        Automatically install Python 3.12 using WinGet.
-        """
+        """Automatically install Python 3.12 using WinGet."""
 
         if platform.system() != "Windows":
 
@@ -628,10 +653,6 @@ class ToolInstaller:
                 exist_ok=True
             )
 
-            # -------------------------------------------------
-            # Remove incomplete previous download.
-            # -------------------------------------------------
-
             if destination.exists():
 
                 try:
@@ -641,10 +662,6 @@ class ToolInstaller:
                 except OSError:
 
                     return None
-
-            # -------------------------------------------------
-            # Prefer curl on Windows.
-            # -------------------------------------------------
 
             curl_command = shutil.which(
                 "curl.exe"
@@ -691,10 +708,6 @@ class ToolInstaller:
                     return None
 
             else:
-
-                # -------------------------------------------------
-                # urllib fallback
-                # -------------------------------------------------
 
                 request = urllib.request.Request(
                     url,
@@ -780,10 +793,6 @@ class ToolInstaller:
                                 )
 
                     print()
-
-            # -------------------------------------------------
-            # Validate destination.
-            # -------------------------------------------------
 
             if not destination.exists():
                 return None
@@ -1004,9 +1013,6 @@ class ToolInstaller:
         """
         Return an existing KiCad installer from the
         eSim Companion download directory.
-
-        If filename is provided, only that exact installer
-        is checked.
         """
 
         if filename:
@@ -1028,10 +1034,6 @@ class ToolInstaller:
                     return None
 
             return None
-
-        # -------------------------------------------------
-        # Fallback: search for KiCad Windows installers.
-        # -------------------------------------------------
 
         try:
 
@@ -1091,10 +1093,6 @@ class ToolInstaller:
                 "supported on Windows only."
             )
 
-        # =================================================
-        # Check existing installation
-        # =================================================
-
         existing_executable = (
             cls.get_kicad_installed_executable()
         )
@@ -1116,10 +1114,6 @@ class ToolInstaller:
                 "KiCad is already installed."
             )
 
-        # =================================================
-        # Automated WinGet installation
-        # =================================================
-
         success, package_id, message = (
             cls.install_with_winget(
                 "KiCad"
@@ -1134,10 +1128,6 @@ class ToolInstaller:
                 message
             )
 
-        # =================================================
-        # Verify installation
-        # =================================================
-
         executable = (
             cls.get_kicad_installed_executable()
         )
@@ -1151,10 +1141,6 @@ class ToolInstaller:
                 "but the installed executable "
                 "could not be detected."
             )
-
-        # =================================================
-        # Save configuration
-        # =================================================
 
         ConfigManager.set_path(
             "KiCad",
@@ -1204,10 +1190,6 @@ class ToolInstaller:
                 message
             )
 
-        # =================================================
-        # Refresh installed executable
-        # =================================================
-
         executable = (
             cls.get_kicad_installed_executable()
         )
@@ -1219,7 +1201,6 @@ class ToolInstaller:
                 str(
                     executable
                 )
-
             )
 
             return (
@@ -1253,9 +1234,6 @@ class ToolInstaller:
     def get_ngspice_executable(cls):
         """
         Return the Ngspice GUI executable path.
-
-        This executable is used when actual Ngspice
-        simulation needs to be launched.
         """
 
         executable = (
@@ -1293,12 +1271,379 @@ class ToolInstaller:
 
     @classmethod
     def download_ngspice(cls):
-        """Download the official Ngspice Windows 64-bit package."""
+        """
+        Download the latest official Ngspice Windows
+        64-bit package.
+        """
+
+        (
+            latest_version,
+            download_url,
+            archive_name
+        ) = cls.get_latest_ngspice_info()
+
+        if not latest_version:
+
+            return None
 
         return cls.download_file(
-            cls.NGSPICE_DOWNLOAD_URL,
-            cls.NGSPICE_ARCHIVE_NAME
+            download_url,
+            archive_name
         )
+
+    # =================================================
+    # Ngspice latest version detection
+    # =================================================
+
+    @classmethod
+    def _get_url_text(cls, url):
+        """
+        Retrieve text from a web page.
+
+        urllib is attempted first.
+
+        If the request is rejected or the returned page
+        cannot be read correctly, Windows curl.exe is used
+        as a fallback.
+
+        Returns:
+            str or None
+        """
+
+        if not url:
+            return None
+
+        user_agent = (
+            "Mozilla/5.0 "
+            "(Windows NT 10.0; Win64; x64) "
+            "eSim-Companion"
+        )
+
+        # -------------------------------------------------
+        # First attempt: urllib
+        # -------------------------------------------------
+
+        try:
+
+            request = urllib.request.Request(
+                url,
+                headers={
+                    "User-Agent": user_agent,
+                    "Accept": (
+                        "text/html,"
+                        "application/xhtml+xml,"
+                        "application/xml;q=0.9,"
+                        "*/*;q=0.8"
+                    ),
+                }
+            )
+
+            with urllib.request.urlopen(
+                request,
+                timeout=cls.TIMEOUT
+            ) as response:
+
+                content = response.read()
+
+            return content.decode(
+                "utf-8",
+                errors="ignore"
+            )
+
+        except (
+            urllib.error.URLError,
+            urllib.error.HTTPError,
+            TimeoutError,
+            OSError
+        ):
+            pass
+
+        # -------------------------------------------------
+        # Second attempt: curl
+        # -------------------------------------------------
+
+        curl_command = shutil.which(
+            "curl.exe"
+        )
+
+        if not curl_command:
+            return None
+
+        try:
+
+            result = subprocess.run(
+                [
+                    curl_command,
+                    "-L",
+                    "--fail",
+                    "--silent",
+                    "--show-error",
+                    "--connect-timeout",
+                    "30",
+                    "--max-time",
+                    str(cls.TIMEOUT),
+                    "-A",
+                    user_agent,
+                    url,
+                ],
+                capture_output=True,
+                text=True,
+                timeout=cls.TIMEOUT + 10,
+                stdin=subprocess.DEVNULL,
+                creationflags=(
+                    subprocess.CREATE_NO_WINDOW
+                    if os.name == "nt"
+                    else 0
+                )
+            )
+
+            if result.returncode != 0:
+                return None
+
+            if not result.stdout:
+                return None
+
+            return result.stdout
+
+        except (
+            subprocess.SubprocessError,
+            OSError
+        ):
+
+            return None
+
+    @classmethod
+    def _extract_ngspice_versions(cls, html):
+        """
+        Extract Ngspice Windows 64-bit release versions
+        from SourceForge HTML.
+        """
+
+        if not html:
+            return []
+
+        patterns = [
+            r"ngspice-(\d+(?:\.\d+)*)_64\.7z",
+            r"ngspice-(\d+(?:\.\d+)*)%5F64\.7z",
+        ]
+
+        versions = set()
+
+        for pattern in patterns:
+
+            matches = re.findall(
+                pattern,
+                html,
+                re.IGNORECASE
+            )
+
+            for version in matches:
+
+                versions.add(
+                    version
+                )
+
+        return sorted(
+            versions,
+            key=lambda value: tuple(
+                int(part)
+                for part in value.split(".")
+            ),
+            reverse=True
+        )
+
+    @classmethod
+    def get_latest_ngspice_info(cls):
+        """
+        Find the latest official Ngspice Windows 64-bit
+        release from the official SourceForge project.
+
+        SourceForge can occasionally return a temporary
+        error, incomplete page, or redirect response.
+        Therefore the official page is checked several
+        times before failing.
+
+        Returns:
+            (
+                latest_version,
+                download_url,
+                archive_name
+            )
+        """
+
+        if platform.system() != "Windows":
+
+            return (
+                None,
+                None,
+                None
+            )
+
+        page_url = (
+            cls.DOWNLOAD_PAGES["Ngspice"]
+        )
+
+        # -------------------------------------------------
+        # Retry the official source when the first request
+        # does not contain a detectable release.
+        # -------------------------------------------------
+
+        for attempt in range(
+            cls.NGSPICE_VERSION_CHECK_RETRIES
+        ):
+
+            html = cls._get_url_text(
+                page_url
+            )
+
+            if html:
+
+                versions = (
+                    cls._extract_ngspice_versions(
+                        html
+                    )
+                )
+
+                if versions:
+
+                    latest_version = (
+                        versions[0]
+                    )
+
+                    archive_name = (
+                        f"ngspice-"
+                        f"{latest_version}"
+                        f"_64.7z"
+                    )
+
+                    download_url = (
+                        "https://sourceforge.net/"
+                        "projects/ngspice/files/"
+                        "ng-spice-rework/"
+                        f"{latest_version}/"
+                        f"{archive_name}/download"
+                    )
+
+                    return (
+                        latest_version,
+                        download_url,
+                        archive_name
+                    )
+
+            # -------------------------------------------------
+            # Wait before retrying.
+            # -------------------------------------------------
+
+            if (
+                attempt
+                < cls.NGSPICE_VERSION_CHECK_RETRIES - 1
+            ):
+
+                time.sleep(
+                    cls.NGSPICE_RETRY_DELAY
+                )
+
+        return (
+            None,
+            None,
+            None
+        )
+
+    @classmethod
+    def get_latest_ngspice_version(cls):
+        """Return the latest official Ngspice version."""
+
+        version, _, _ = (
+            cls.get_latest_ngspice_info()
+        )
+
+        return version
+
+    # =================================================
+    # Ngspice version helpers
+    # =================================================
+
+    @classmethod
+    def get_installed_ngspice_version(cls):
+        """
+        Detect the installed Ngspice version using
+        ngspice_con.exe -v.
+        """
+
+        executable = (
+            cls.get_ngspice_console_executable()
+        )
+
+        if not executable:
+            return None
+
+        try:
+
+            result = subprocess.run(
+                [
+                    str(executable),
+                    "-v"
+                ],
+                capture_output=True,
+                text=True,
+                timeout=10,
+                stdin=subprocess.DEVNULL,
+                creationflags=(
+                    subprocess.CREATE_NO_WINDOW
+                    if os.name == "nt"
+                    else 0
+                )
+            )
+
+            output = (
+                result.stdout
+                or result.stderr
+                or ""
+            )
+
+            match = re.search(
+                r"ngspice[-\s]+"
+                r"(\d+(?:\.\d+)*)",
+                output,
+                re.IGNORECASE
+            )
+
+            if not match:
+                return None
+
+            return match.group(1)
+
+        except (
+            subprocess.SubprocessError,
+            OSError
+        ):
+
+            return None
+
+    @staticmethod
+    def _version_tuple(version):
+        """Convert a version string into a comparable tuple."""
+
+        if not version:
+            return None
+
+        try:
+
+            return tuple(
+                int(part)
+                for part in version.split(".")
+            )
+
+        except (
+            ValueError,
+            AttributeError
+        ):
+
+            return None
+
+    # =================================================
+    # Ngspice extraction
+    # =================================================
 
     @classmethod
     def extract_ngspice(cls, archive_path):
@@ -1316,10 +1661,6 @@ class ToolInstaller:
 
         if not archive.is_file():
             return None
-
-        # -------------------------------------------------
-        # Find tar
-        # -------------------------------------------------
 
         tar_command = shutil.which(
             "tar"
@@ -1397,16 +1738,24 @@ class ToolInstaller:
 
             return None
 
+    # =================================================
+    # Ngspice verification
+    # =================================================
+
     @classmethod
-    def verify_ngspice(cls, executable_path=None):
+    def verify_ngspice(
+        cls,
+        executable_path=None,
+        expected_version=None
+    ):
         """
         Verify Ngspice using the console executable.
 
-        IMPORTANT:
-        Do not execute ngspice.exe here because it opens
-        the Ngspice GUI.
+        If expected_version is supplied, the detected
+        version must match it.
 
-        ngspice_con.exe -v is used instead.
+        If expected_version is not supplied, any valid
+        Ngspice version is accepted.
         """
 
         console_executable = (
@@ -1454,7 +1803,13 @@ class ToolInstaller:
                 ],
                 capture_output=True,
                 text=True,
-                timeout=10
+                timeout=10,
+                stdin=subprocess.DEVNULL,
+                creationflags=(
+                    subprocess.CREATE_NO_WINDOW
+                    if os.name == "nt"
+                    else 0
+                )
             )
 
             output = (
@@ -1466,10 +1821,42 @@ class ToolInstaller:
             if result.returncode != 0:
                 return False
 
-            return (
-                "ngspice" in output.lower()
-                and cls.NGSPICE_VERSION in output
+            if "ngspice" not in output.lower():
+                return False
+
+            detected_version = (
+                cls.get_installed_ngspice_version()
             )
+
+            if not detected_version:
+                return False
+
+            if expected_version:
+
+                detected_tuple = (
+                    cls._version_tuple(
+                        detected_version
+                    )
+                )
+
+                expected_tuple = (
+                    cls._version_tuple(
+                        expected_version
+                    )
+                )
+
+                if (
+                    detected_tuple is None
+                    or expected_tuple is None
+                ):
+                    return False
+
+                return (
+                    detected_tuple
+                    == expected_tuple
+                )
+
+            return True
 
         except (
             subprocess.SubprocessError,
@@ -1478,14 +1865,15 @@ class ToolInstaller:
 
             return False
 
+    # =================================================
+    # Ngspice automatic installation
+    # =================================================
+
     @classmethod
     def install_ngspice(cls):
         """
-        Download, extract, verify, and configure Ngspice.
-
-        The console executable is saved in ConfigManager
-        so the dependency checker can perform version
-        checks without opening the Ngspice GUI.
+        Automatically download, extract, verify, and
+        configure the latest official Ngspice release.
         """
 
         if platform.system() != "Windows":
@@ -1507,9 +1895,11 @@ class ToolInstaller:
 
         if existing_console:
 
-            if cls.verify_ngspice(
-                existing_console
-            ):
+            installed_version = (
+                cls.get_installed_ngspice_version()
+            )
+
+            if installed_version:
 
                 ConfigManager.set_path(
                     "Ngspice",
@@ -1523,21 +1913,49 @@ class ToolInstaller:
                     str(
                         existing_console
                     ),
-                    "Ngspice is already installed."
+                    (
+                        "Ngspice is already installed "
+                        f"(version {installed_version})."
+                    )
                 )
+
+        # =================================================
+        # Find latest official release
+        # =================================================
+
+        (
+            latest_version,
+            download_url,
+            archive_name
+        ) = cls.get_latest_ngspice_info()
+
+        if not latest_version:
+
+            return (
+                False,
+                None,
+                "Unable to determine the latest "
+                "official Ngspice release."
+            )
 
         # =================================================
         # Download
         # =================================================
 
-        archive_path = cls.download_ngspice()
+        archive_path = cls.download_file(
+            download_url,
+            archive_name
+        )
 
         if not archive_path:
 
             return (
                 False,
                 None,
-                "Unable to download Ngspice."
+                (
+                    "Unable to download "
+                    f"Ngspice {latest_version}."
+                )
             )
 
         # =================================================
@@ -1555,23 +1973,28 @@ class ToolInstaller:
             return (
                 False,
                 None,
-                "Unable to extract the "
-                "Ngspice package."
+                (
+                    f"Ngspice {latest_version} "
+                    "could not be extracted."
+                )
             )
 
         # =================================================
-        # Verify
+        # Verify exact version
         # =================================================
 
         if not cls.verify_ngspice(
-            console_executable
+            console_executable,
+            expected_version=latest_version
         ):
 
             return (
                 False,
                 None,
-                "Ngspice was extracted but could "
-                "not be verified."
+                (
+                    f"Ngspice {latest_version} was "
+                    "extracted but could not be verified."
+                )
             )
 
         # =================================================
@@ -1586,5 +2009,227 @@ class ToolInstaller:
         return (
             True,
             console_executable,
-            "Ngspice installed successfully."
+            (
+                f"Ngspice {latest_version} "
+                "installed successfully."
+            )
+        )
+
+    # =================================================
+    # Ngspice automatic update
+    # =================================================
+
+    @classmethod
+    def update_ngspice(cls):
+        """
+        Automatically update Ngspice to the latest
+        official Windows 64-bit release.
+
+        Process:
+
+        1. Detect installed version.
+        2. Detect latest official version.
+        3. Compare versions.
+        4. Download only when a newer version exists.
+        5. Extract the newer release.
+        6. Verify the new version.
+        7. Save the verified executable path.
+
+        If the official version check temporarily fails,
+        the existing installation is left untouched.
+        """
+
+        if platform.system() != "Windows":
+
+            return (
+                False,
+                None,
+                "Ngspice automatic update is "
+                "supported on Windows only."
+            )
+
+        # =================================================
+        # Detect installed executable
+        # =================================================
+
+        current_executable = (
+            cls.get_ngspice_console_executable()
+        )
+
+        if not current_executable:
+
+            return (
+                False,
+                None,
+                "Ngspice is not currently installed."
+            )
+
+        # =================================================
+        # Detect installed version
+        # =================================================
+
+        installed_version = (
+            cls.get_installed_ngspice_version()
+        )
+
+        if not installed_version:
+
+            return (
+                False,
+                str(current_executable),
+                "Unable to determine the "
+                "installed Ngspice version."
+            )
+
+        # =================================================
+        # Detect latest official version
+        # =================================================
+
+        (
+            latest_version,
+            download_url,
+            archive_name
+        ) = cls.get_latest_ngspice_info()
+
+        if not latest_version:
+
+            return (
+                False,
+                str(current_executable),
+                (
+                    "Unable to determine the latest "
+                    "official Ngspice version. "
+                    "The existing installation was "
+                    "not changed."
+                )
+            )
+
+        # =================================================
+        # Compare versions
+        # =================================================
+
+        installed_tuple = (
+            cls._version_tuple(
+                installed_version
+            )
+        )
+
+        latest_tuple = (
+            cls._version_tuple(
+                latest_version
+            )
+        )
+
+        if (
+            installed_tuple is None
+            or latest_tuple is None
+        ):
+
+            return (
+                False,
+                str(current_executable),
+                "Unable to compare Ngspice versions."
+            )
+
+        # =================================================
+        # Already up to date
+        # =================================================
+
+        if latest_tuple <= installed_tuple:
+
+            ConfigManager.set_path(
+                "Ngspice",
+                str(current_executable)
+            )
+
+            return (
+                True,
+                str(current_executable),
+                (
+                    "Ngspice is already up to date "
+                    f"(version {installed_version})."
+                )
+            )
+
+        # =================================================
+        # Download newer release
+        # =================================================
+
+        installer_path = cls.download_file(
+            download_url,
+            archive_name
+        )
+
+        if not installer_path:
+
+            return (
+                False,
+                str(current_executable),
+                (
+                    f"Unable to download Ngspice "
+                    f"{latest_version}. "
+                    "The existing installation "
+                    "was not changed."
+                )
+            )
+
+        # =================================================
+        # Extract newer release
+        # =================================================
+
+        extracted_executable = (
+            cls.extract_ngspice(
+                installer_path
+            )
+        )
+
+        if not extracted_executable:
+
+            return (
+                False,
+                str(current_executable),
+                (
+                    f"Ngspice {latest_version} "
+                    "could not be extracted. "
+                    "The existing installation "
+                    "was not changed."
+                )
+            )
+
+        # =================================================
+        # Verify exact new version
+        # =================================================
+
+        if not cls.verify_ngspice(
+            extracted_executable,
+            expected_version=latest_version
+        ):
+
+            return (
+                False,
+                str(current_executable),
+                (
+                    f"Ngspice {latest_version} was "
+                    "downloaded and extracted, but "
+                    "verification failed."
+                )
+            )
+
+        # =================================================
+        # Save verified configuration
+        # =================================================
+
+        ConfigManager.set_path(
+            "Ngspice",
+            extracted_executable
+        )
+
+        return (
+            True,
+            extracted_executable,
+            (
+                f"Ngspice updated successfully "
+                f"from {installed_version} "
+                f"to {latest_version}."
+            )
         )
