@@ -92,9 +92,6 @@ class DependencyChecker:
 
         # -------------------------------------------------
         # Prefer Windows Python Launcher.
-        #
-        # This avoids accidentally selecting the project's
-        # virtual environment.
         # -------------------------------------------------
 
         py_launcher = shutil.which(
@@ -141,7 +138,6 @@ class DependencyChecker:
 
         # -------------------------------------------------
         # Fallback:
-        #
         # Standard per-user Python 3.12 installation.
         # -------------------------------------------------
 
@@ -167,7 +163,6 @@ class DependencyChecker:
 
         # -------------------------------------------------
         # Fallback:
-        #
         # Standard system-wide Python 3.12 installation.
         # -------------------------------------------------
 
@@ -213,10 +208,6 @@ class DependencyChecker:
 
         possible_roots = []
 
-        # -------------------------------------------------
-        # Standard 64-bit Program Files locations
-        # -------------------------------------------------
-
         program_files = os.environ.get(
             "ProgramFiles"
         )
@@ -239,19 +230,11 @@ class DependencyChecker:
                 / "KiCad"
             )
 
-        # -------------------------------------------------
-        # Standard fallback
-        # -------------------------------------------------
-
         possible_roots.append(
             Path(
                 "C:/Program Files/KiCad"
             )
         )
-
-        # -------------------------------------------------
-        # Search version directories
-        # -------------------------------------------------
 
         for root in possible_roots:
 
@@ -311,17 +294,10 @@ class DependencyChecker:
                 self.find_python_executable()
             )
 
-            if path:
-
-                ConfigManager.set_path(
-                    "Python",
-                    path
-                )
-
         else:
 
             # -------------------------------------------------
-            # Use configured path first
+            # Use configured path first.
             # -------------------------------------------------
 
             if (
@@ -340,7 +316,7 @@ class DependencyChecker:
                 )
 
         # -------------------------------------------------
-        # Special handling for KiCad
+        # Special handling for KiCad.
         # -------------------------------------------------
 
         if (
@@ -352,19 +328,35 @@ class DependencyChecker:
                 self.find_kicad_executable()
             )
 
-            if path:
+        # -------------------------------------------------
+        # If a tool was found, save the resolved path.
+        #
+        # This is important for Git because Git is normally
+        # detected through PATH and was previously not saved
+        # to tool_paths.json.
+        # -------------------------------------------------
 
-                ConfigManager.set_path(
-                    "KiCad",
-                    path
-                )
+        if path:
+
+            try:
+
+                if os.path.isfile(path):
+
+                    ConfigManager.set_path(
+                        name,
+                        str(path)
+                    )
+
+            except OSError:
+
+                pass
 
         minimum_version = (
             self.tools[name]["minimum_version"]
         )
 
         # -------------------------------------------------
-        # Tool not found
+        # Tool not found.
         # -------------------------------------------------
 
         if path is None:
@@ -382,7 +374,7 @@ class DependencyChecker:
             )
 
         # -------------------------------------------------
-        # Tool found
+        # Tool found.
         # -------------------------------------------------
 
         version = self.get_version(
@@ -391,7 +383,7 @@ class DependencyChecker:
         )
 
         # -------------------------------------------------
-        # Check compatibility
+        # Check compatibility.
         # -------------------------------------------------
 
         compatible = (
@@ -402,7 +394,7 @@ class DependencyChecker:
         )
 
         # -------------------------------------------------
-        # Incompatible
+        # Incompatible.
         # -------------------------------------------------
 
         if (
@@ -425,7 +417,7 @@ class DependencyChecker:
             )
 
         # -------------------------------------------------
-        # Installed
+        # Installed.
         # -------------------------------------------------
 
         return ToolResult(
@@ -493,7 +485,7 @@ class DependencyChecker:
             )
 
         # -------------------------------------------------
-        # Ngspice-specific version format
+        # Ngspice-specific version format.
         # -------------------------------------------------
 
         ngspice_match = re.search(
@@ -509,7 +501,7 @@ class DependencyChecker:
             )
 
         # -------------------------------------------------
-        # Normal semantic version
+        # Normal semantic version.
         # -------------------------------------------------
 
         match = re.search(
@@ -522,7 +514,7 @@ class DependencyChecker:
             return match.group(0)
 
         # -------------------------------------------------
-        # Simple version
+        # Simple version.
         # -------------------------------------------------
 
         simple_match = re.search(
@@ -565,7 +557,7 @@ class DependencyChecker:
             )
 
             # -------------------------------------------------
-            # Ngspice
+            # Ngspice.
             # -------------------------------------------------
 
             if (
@@ -589,7 +581,7 @@ class DependencyChecker:
                     ]
 
             # -------------------------------------------------
-            # KiCad
+            # KiCad.
             # -------------------------------------------------
 
             elif (
@@ -613,7 +605,7 @@ class DependencyChecker:
                     ]
 
             # -------------------------------------------------
-            # Run version command
+            # Run version command.
             # -------------------------------------------------
 
             result = subprocess.run(

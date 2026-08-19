@@ -1,6 +1,6 @@
 {
-    "Python": null,
-    "Git": null,
+    "Python": "C:\\Users\\chitt\\AppData\\Local\\Programs\\Python\\Python312\\python.exe",
+    "Git": "C:\\Program Files\\Git\\cmd\\git.exe",
     "Ngspice": "C:\\Users\\chitt\\Downloads\\eSim-Companion\\Ngspice\\Spice64\\bin\\ngspice_con.exe",
-    "KiCad": null
+    "KiCad": "C:\\Program Files\\KiCad\\10.0\\bin\\kicad.exe"
 }
